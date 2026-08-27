@@ -1,0 +1,127 @@
+name: CI
+
+# Non-deployment pipeline. It never touches Railway and never uses production
+# credentials — every value below is a throwaway CI dummy.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Least privilege: the workflow only needs to read the repository.
+permissions:
+  contents: read
+
+# Cancel an in-progress run when the same ref is pushed again.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  # --- CI-only dummy configuration (NOT production secrets) --------------- #
+  SECRET_KEY: "ci-only-not-a-secret-ci-only-not-a-secret-0123456789"
+  DATABASE_URL: "postgres://viable:viable@localhost:5432/viable_ci"
+  REDIS_URL: "redis://localhost:6379/0"
+  TEST_REDIS_URL: "redis://localhost:6379/15"
+  ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
+  CORS_ALLOWED_ORIGINS: "http://localhost:3000"
+  CSRF_TRUSTED_ORIGINS: "http://localhost:3000"
+  OFFLINE_SIGNING_KEY: "ci-only-offline-signing-key-not-a-secret"
+  DJANGO_STORAGE_BACKEND: "local"
+  CACHE_BACKEND: "redis"
+  AXES_ENABLED: "false"
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: viable
+          POSTGRES_PASSWORD: viable
+          POSTGRES_DB: viable_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U viable"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7.4.2-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+
+    steps:
+      # Pinned to a major tag (not a floating "latest"). For a stricter policy,
+      # replace with the full commit SHA; Dependabot (.github/dependabot.yml)
+      # keeps action versions current.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # requirements.lock is a full `pip freeze` (runtime + dev tools).
+          pip install -r requirements.lock
+          # Make the local `apps` / `config` packages importable, nothing else.
+          pip install -e . --no-deps
+
+      - name: ruff check
+        run: ruff check .
+
+      - name: ruff format --check
+        run: ruff format --check .
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Migration drift check
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: PostgreSQL test suite + real-Redis integration + coverage gate
+        run: |
+          pytest -p no:randomly --create-db \
+            --cov=apps --cov-report=term-missing --cov-fail-under=90
+
+      - name: OpenAPI schema validation (fail on warnings) + staleness check
+        run: |
+          python manage.py spectacular --file openapi.yml --validate --fail-on-warn
+          git diff --exit-code -- openapi.yml \
+            || (echo "::error::openapi.yml is stale — regenerate and commit it" && exit 1)
+
+      - name: Production deployment check
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.production
+        run: python manage.py check --deploy --fail-level WARNING
+
+      - name: Dependency vulnerability audit
+        run: pip-audit --strict --progress-spinner off
+
+      - name: Secret-leak scan
+        run: bash scripts/check_secrets.sh
+
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build -t viable-stone-backend:ci .
+
+      - name: Non-root runtime smoke test
+        run: |
+          uid="$(docker run --rm --entrypoint id viable-stone-backend:ci -u)"
+          test "$uid" != "0" || (echo "::error::image runs as root" && exit 1)
+          docker run --rm --entrypoint python viable-stone-backend:ci \
+            -c "import django; print('django', django.get_version())"

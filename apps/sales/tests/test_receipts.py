@@ -403,7 +403,11 @@ def test_env_example_documents_every_business_identity_var(settings):
         "BUSINESS_CURRENCY_SYMBOL",
     ):
         assert var in env_example, f"{var} missing from .env.example"
-    # no obvious secret material committed
+    # no obvious *filled-in* secret material committed (empty KEY= lines are fine)
+    import re
+
     lowered = env_example.lower()
-    for token in ("secret_key=django-insecure", "password=", "aws_secret", "api_key="):
-        assert token not in lowered
+    assert "secret_key=django-insecure" not in lowered
+    assert not re.search(
+        r"(password|aws_secret\w*|api_key|secret_access_key)=\S", lowered
+    )

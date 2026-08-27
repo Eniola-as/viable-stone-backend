@@ -34,7 +34,7 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 | 14 | Discounts, approvals, rare returns, refunds, protected adjustments | ✅ | **14A:** `ApprovalRequest`, `SaleReturn` (unique `(branch, client_return_id)`), `SaleReturnItem` (+`condition` RESELLABLE / DAMAGED_OR_OPENED), `Refund` (`issued_by`, amount>0). `submit_return_request` / `reject_return` / `approve_return` (owner-only, atomic, `select_for_update`, idempotent via `client_return_id`, ≤ sold−returned, original price+cost snapshots, RESELLABLE → `RETURN` movement + reverse COGS / DAMAGED → no restore, sale → PARTIALLY_RETURNED/RETURNED, receipt untouched). `adjust_stock` (owner, direction+positive qty+detailed reason, never negative, `select_for_update`, idempotent, audit before/after). `profit_report`/`best_sellers` net approved returns. **14B:** internal DRAFT sale (`create_draft_sale` — no payment/receipt/movement/report), `replace_draft_cart` (auto-supersedes a pending discount), `request_discount` (cashier, fixed Naira, reason, 0 < amount < subtotal), `approve_discount`/`reject_discount` (owner only), `finalise_draft` (atomic + idempotent + `select_for_update`; re-checks stock & active prices via a draft fingerprint → `approval_stale`; allocates the fixed discount across items in kobo by largest-remainder so parts sum exactly; cost snapshot taken at finalisation; payments == subtotal − discount; assigns receipt number). Discounted returns refund **net of discount** with a running kobo allocation (partial returns never over-refund; full return == final amount paid). Receipt shows Subtotal / Discount / Final total (PDF + JSON). APIs: `/sales/drafts/`, `/sales/{id}/{draft-cart,discount-requests,finalise,cancel}/`, polymorphic `/approvals/{id}/{approve,reject}/`, `/sales/{id}/return-requests/`, `/returns/`, `/inventory/adjustments/`. 83 tests incl. 3 real-thread PostgreSQL concurrency (approve-once, adjust-once, finalise-once). |
 | 15 | Notifications | ✅ | Durable in-app `Notification` (recipient, branch, type, safe title/message, `is_read`/`read_at`, safe `related_object_type`/`id`, allowlisted `action_path`, `dedupe_key`; unique `(recipient, dedupe_key)`) + `PushSubscription` (unique `(user, endpoint)`, upsert, `failure_count`/`expired_at`). Every alert writes (and de-dupes) the durable row **inside the business transaction** — a rollback removes the change and the notification together, and a `(recipient, dedupe_key)` race is absorbed in a savepoint without poisoning that transaction; only the external Web Push is deferred to `transaction.on_commit` and a push failure never touches the business txn. **Central stock detection:** `write_movement` emits `stock_balance_changed` while the balance is locked; one receiver classifies OK/LOW/OUT vs `variant.low_stock_level` and alerts branch owners only on a level *change* into LOW or OUT — never repeatedly while low/out, direct drop to 0 sends only OUT_OF_STOCK, recovery resets the cycle, OUT→still-low sends one LOW_STOCK. Works identically through sales, returns, restocks, stock counts and protected adjustments. **Approvals:** submitting a discount/return request notifies active branch owners (not the requester); the decision notifies the requester (never self). APIs: `/notifications/` (list, `unread-count`, `{id}/read/`, `read-all/` — all own-only, cross-user/branch → 404, mark-read idempotent, no create/edit/delete), `/push-subscriptions/` (upsert-create, list, `{id}/deactivate/`, delete — own-only, HTTPS-or-localhost + key-length validation, rate-limited `notifications_write`), `/push-subscriptions/public-key/` (public VAPID key only). `p256dh`/`auth` never appear in any response body or `openapi.yml` response schema; private VAPID key is env-only, never in APIs/logs/openapi; `.env.example` uses illustrative placeholders only. 94 tests incl. real-thread PostgreSQL dedupe concurrency, in-transaction-row + rollback-removes-both, dedupe-race isolation, push-failure isolation, and protected-field-leak checks. |
 | 16 | One-device offline fixed-price checkout + idempotent sync | ✅ | `accounts.OfflineDeviceAuthorization` binds one `RegisteredDevice` + branch + cashier + a versioned **signed** catalogue snapshot (active variants: name/SKU/fixed price/qty/low-stock — no cost, credentials, secret or customer data) + a ≤24h window (`OFFLINE_AUTHORIZATION_MAX_HOURS`). One ACTIVE per branch = the exclusive offline session: `assert_no_active_offline_session` makes online `create_sale`/`finalise_draft`/`adjust_stock`/`apply_stock_count` return `409 offline_session_active` until the owner ends it. Signing via `django.core.signing` (HMAC-SHA256 + `constant_time_compare`); `OFFLINE_SIGNING_KEY` env-only. **Sync** (`POST /offline/sync/`, device-bound by the signed token, cashier-auth): sales processed in device-sequence order, **every price/total recomputed from the signed snapshot** (client prices/totals/discounts/costs never trusted), each sale atomic, one outcome per sale — `ACCEPTED` / `DUPLICATE` / `CONFLICT` / `REJECTED` / `OWNER_REVIEW_REQUIRED` — in `sales.OfflineSaleSyncRecord` (unique `(branch, client_sale_id)` = idempotency + retry backstop). Stock conflicts and revoked/replaced/force-closed sessions are **retained** for owner review, never discarded, never negative, never partial. Accepted sales reuse `create_sale` with `source=OFFLINE` + `fixed_prices` + original `completed_at`, so they feed inventory / reports / receipts / notifications normally; official receipt number assigned on sync (temporary receipt is labelled `OFFLINE RECEIPT — PENDING SYNCHRONIZATION`, no number). Offline `Payment.offline_confirmed=True` (physically confirmed, not electronically verified); TRANSFER/POS require a reference. APIs: `/offline/devices/` (owner+MFA register/replace/revoke), `/offline/authorizations/` (owner+MFA issue/replace/revoke/`end-session` — force-end needs `mfa_confirmed`; `status/` gives expiry + pending count), `/offline/sync/`, `/offline/temporary-receipt/`, `/offline/sync-records/` (+ owner `resolve`), `/offline/sales/{client_sale_id}/` mapping. Cross-device/branch → 404; tampered/duplicate-sequence/outside-window payloads rejected; batch-size limit + `offline_sync` throttle; no token/phone/reference/secret in logs, responses or `openapi.yml`. 61 tests incl. 2 real-thread PostgreSQL concurrency (identical batches → one Sale; competing batches never oversell). |
-| 17 | Security hardening, CI, monitoring, deployment, backup/restore docs | ⏳ | Redis required. |
+| 17 | Security hardening, CI, monitoring, deployment, backup/restore docs | ✅ | **Nothing deployed.** `docker-compose.yml` (pinned `redis:7.4.2-alpine`, `127.0.0.1`-only, healthcheck) for local Redis; production `CACHES`/session/throttle/axes use Redis and **require `REDIS_URL`** (no fallback). Split probes: `/health/live/` (process) and `/health/ready/` (DB + Redis → 503 when down); bodies minimal. `config/settings/validation.py` fails startup if any required prod var is missing (`SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, `ALLOWED_HOSTS`, `CORS/CSRF_*`, `OFFLINE_SIGNING_KEY`, storage). Prod: `DEBUG=False`, secure cookies + HSTS (preload **off** until a real domain, `security.W021` silenced), exact CORS (`CORS_ALLOW_ALL_ORIGINS=False`), API schema/docs `IsOwnerOrTechAdmin` or disabled (`API_DOCS_ENABLED`). Expense uploads validated by **magic bytes** + size + extension-match (`apps/core/validators.py`), not extension alone. Optional Sentry (`apps/core/sentry.py`) — inert without `SENTRY_DSN`, `send_default_pii=False`, scrubs cookies/auth/CSRF headers, request bodies, phones, payment refs, push keys, offline tokens, DB URLs; keeps `request_id`. Structured JSON stdout logging (`LOG_FORMAT=json`, `JSONFormatter` scrubs secrets). Production `Dockerfile` (pinned `python:3.13.1-slim`, multi-stage, non-root `app` user, runtime deps only, `collectstatic` via throwaway `config.settings.build`, `HEALTHCHECK` → `/health/live/`, `gunicorn.conf.py` documents workers/threads/timeout/graceful-shutdown). `.github/workflows/ci.yml` — non-deploy, `permissions: contents: read`, cancel-superseded, Python 3.13 + PostgreSQL 18 + real Redis services, locked install (`requirements.lock`), ruff check/format, `manage.py check`, migration-drift, full pytest + real-Redis + **coverage ≥ 90**, spectacular `--fail-on-warn` + staleness, `check --deploy --fail-level WARNING`, `pip-audit`, secret-leak scan, Docker build + non-root smoke; actions pinned + `dependabot.yml`. Private storage: local dev on disk; prod prepped for generic S3-compatible (env-only, private ACL, signed URLs, `django-storages[s3]` extra) — no provider chosen/created. Docs: `BACKUP_RESTORE.md`, `FRONTEND_HANDOFF.md`, `MANUAL_TESTING.md`, `PRODUCTION_ENV.md` (placeholders only), `RAILWAY_SETUP.md`, `DEPLOYMENT.md`; `scripts/backup_restore_drill.sh` + `check_secrets.sh`. Dev-only `seed_demo` command (refuses under prod, idempotent, creds from env). 53 tests incl. a real `pg_dump`/`pg_restore` drill that verifies financial totals survive restore, and 5 real-Redis integration tests (run in CI). |
 | 18 | Acceptance tests + final OpenAPI contract | ⏳ | |
 
 ## Git checkpoints
@@ -50,27 +50,34 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 - `2f64157` — **Stage 15** — notifications (durable in-app `Notification` +
   best-effort Web Push; central low/out-of-stock transition detection;
   approval-workflow alerts).
-- **Stage 16** — one-device offline fixed-price checkout + idempotent sync
-  (signed catalogue snapshot, exclusive session, device-bound batch sync with
-  per-sale outcomes).
+- `333806d` — **Stage 16** — one-device offline fixed-price checkout +
+  idempotent sync (signed catalogue snapshot, exclusive session, device-bound
+  batch sync with per-sale outcomes).
+- **Stage 17** — production-readiness: Redis/Docker, security hardening, CI,
+  monitoring, backup/restore + frontend/manual-testing docs. **Nothing
+  deployed.**
 - Branch `setup/backend-foundation`. `.env` excluded (git-ignored); `openapi.yml`
   and `docs/PROGRESS.md` committed in each.
 
-## Test suite — 2026-08-27 (through Stage 16)
+## Test suite — 2026-08-27 (through Stage 17)
 
 ```
-pytest --collect-only -q  -> 431 tests collected
-pytest --create-db        -> 431 passed, 0 failed, 0 skipped   (PostgreSQL 18)
-coverage                  -> 93% lines
+pytest --collect-only -q  -> 484 tests collected
+pytest --create-db        -> 479 passed, 0 failed, 5 skipped   (PostgreSQL 18)
+   (5 skipped = real-Redis integration; run in CI with the redis service)
+coverage                  -> 92.95% lines  (CI gate: --cov-fail-under=90)
 ruff check .              -> All checks passed
 ruff format --check .     -> clean
 manage.py check           -> 0 issues
 makemigrations --check    -> No changes detected
 spectacular --validate --fail-on-warn -> exit 0, 0 warnings, 0 errors (openapi.yml)
-check --deploy (prod)     -> 0 issues
+check --deploy (prod, --fail-level WARNING) -> 0 issues (1 silenced: W021 HSTS-preload, deliberate)
+pip-audit                 -> No known vulnerabilities
+secret-leak scan          -> OK
+backup/restore drill      -> counts + financial totals identical after restore
 ```
 
-### Collected test inventory (431, through Stage 16)
+### Collected test inventory (484, through Stage 17)
 
 | File | Tests |
 |---|---|
@@ -118,7 +125,15 @@ check --deploy (prod)     -> 0 issues
 | sales/tests/test_offline_snapshot.py | 6 |
 | sales/tests/test_offline_models.py | 5 |
 | sales/tests/test_offline_concurrency.py | 2 |
-| **Total** | **431** |
+| core/tests/test_security_regression.py | 17 |
+| core/tests/test_upload_validation.py | 14 |
+| core/tests/test_health_probes.py | 5 |
+| core/tests/test_redis_integration.py | 5 (skipped without Redis) |
+| core/tests/test_sentry_scrub.py | 5 |
+| core/tests/test_demo_data.py | 3 |
+| core/tests/test_structured_logging.py | 3 |
+| core/tests/test_backup_restore.py | 1 (skipped without pg tools) |
+| **Total** | **484** (479 passed + 5 Redis-integration skipped locally) |
 
 Stage 14 is complete: 14A (returns / refunds / protected adjustments) +
 14B (owner-approved fixed-Naira discount on an internal DRAFT sale).
@@ -128,6 +143,14 @@ Stage 16 is complete: one authorised offline device per branch, a versioned
 signed catalogue snapshot, an exclusive offline session, and a device-bound
 idempotent batch sync that recomputes every price from the snapshot and
 returns one outcome per sale.
+Stage 17 is complete: the backend is production-ready but **not deployed** —
+pinned Redis via Docker Compose, hard production config validation, secure
+cookie/HSTS/CORS settings, gated API docs, magic-byte upload validation,
+optional scrubbed Sentry, structured JSON logging, split liveness/readiness
+probes, a non-root production Dockerfile + Gunicorn config, a non-deploy
+GitHub Actions pipeline (PG 18 + real Redis, coverage ≥ 90, pip-audit,
+secret scan, image smoke test), a verified local backup/restore drill, and
+the frontend / manual-testing / backup / production-env / Railway docs.
 
 (Stages 1–10 alone: 112.)
 
@@ -405,3 +428,68 @@ report 112, 0 skipped:
   **431 passed** (PostgreSQL 18), 93% coverage; ruff / check /
   makemigrations --check / check --deploy (prod) clean; `openapi.yml`
   regenerated + validated (`--fail-on-warn`, 0 warnings / 0 errors).
+- 2026-08-27: **Stage 16** committed as `333806d`.
+- 2026-08-27: **Stage 17** — production-readiness (nothing deployed; no Railway /
+  Sentry / storage / database resources created; no real secrets requested).
+  **Redis:** `docker-compose.yml` with a pinned `redis:7.4.2-alpine`, bound to
+  `127.0.0.1` only, `redis-cli ping` healthcheck; `config/settings/production.py`
+  points `CACHES`, `cached_db` sessions, DRF throttling and django-axes at
+  Redis and **requires `REDIS_URL`** (no locmem fallback); `REDIS_HEALTHCHECK`
+  makes `/api/v1/health/ready/` ping Redis and 503 when it is down; 5 real-Redis
+  integration tests (`@pytest.mark.redis`, skipped when unreachable, run by CI —
+  no fakeredis). **Security hardening:** `config/settings/validation.py` fails
+  startup if `SECRET_KEY` / `DATABASE_URL` / `REDIS_URL` / `ALLOWED_HOSTS` /
+  `CORS_ALLOWED_ORIGINS` / `CSRF_TRUSTED_ORIGINS` / `OFFLINE_SIGNING_KEY` /
+  storage config is missing, or `DEBUG` is true; production enforces
+  `DEBUG=False`, `Secure`/`SameSite` cookies, `SECURE_SSL_REDIRECT`, HSTS
+  (preload deliberately **off** until a real domain — `security.W021`
+  silenced), proxy SSL header, exact `CORS_ALLOWED_ORIGINS`
+  (`CORS_ALLOW_ALL_ORIGINS=False`); API schema + Swagger/ReDoc are
+  `IsOwnerOrTechAdmin`-only or fully disabled (`API_DOCS_ENABLED`).
+  `apps/core/validators.py` validates expense-receipt uploads by size, real
+  magic bytes and matching extension (a renamed script is rejected) — wired
+  into `ExpenseSerializer`. New `apps/core/tests/test_security_regression.py`
+  (17) and `test_upload_validation.py` (14). **Monitoring:** `apps/core/sentry.py`
+  — Sentry is fully inert without `SENTRY_DSN`; when enabled,
+  `send_default_pii=False`, `max_request_body_size="never"`, and `before_send`
+  strips cookies, `Authorization` / `X-CSRFToken` headers, request bodies,
+  customer phones, payment references, push keys, offline tokens and database
+  URLs while keeping `request_id` as a tag. `apps/core/logging.py::JSONFormatter`
+  emits one scrubbed JSON line per record on stdout (`LOG_FORMAT=json` in
+  production). Split probes `/health/live/` (process) and `/health/ready/`
+  (DB + Redis); both bodies minimal — no versions, credentials or addresses.
+  **Private storage:** local disk for dev; production prepped for a generic
+  private S3-compatible bucket entirely via `AWS_S3_*` env (private ACL,
+  short-lived signed URLs, `django-storages[s3]` in a `production` extra) — no
+  provider is chosen or created; the Railway Buckets encryption/versioning/lock
+  gap is documented. **CI** (`.github/workflows/ci.yml`, non-deploy):
+  `permissions: contents: read`, `concurrency` cancel-in-progress, Python 3.13,
+  PostgreSQL 18 + `redis:7.4.2-alpine` service containers, install from
+  `requirements.lock`, `ruff check` + `ruff format --check`, `manage.py check`,
+  `makemigrations --check`, full pytest + real-Redis + `--cov-fail-under=90`,
+  `spectacular --validate --fail-on-warn` + staleness check,
+  `check --deploy --fail-level WARNING`, `pip-audit`, `scripts/check_secrets.sh`,
+  and a Docker build + non-root-runtime smoke job; actions pinned to major tags
+  with `.github/dependabot.yml` to SHA-pin and bump. **Production artifacts:**
+  pinned `python:3.13.1-slim-bookworm` multi-stage `Dockerfile`, non-root `app`
+  user, runtime deps only, build-time `collectstatic` via
+  `config/settings/build.py`, `HEALTHCHECK` → `/health/live/`, `gunicorn.conf.py`
+  (workers / threads / 30s timeout / 30s graceful shutdown / `max_requests`
+  recycling); `.dockerignore`; no `railway.*` config-as-code — `docs/RAILWAY_SETUP.md`
+  documents the dashboard steps and `docs/DEPLOYMENT.md` records migrations as a
+  gated release step. **Backup/restore:** `docs/BACKUP_RESTORE.md` (local dump/
+  restore, Railway volume snapshots + PITR, encrypted off-site `pg_dump`,
+  retention, restore-into-a-new-DB, verification queries, drill procedure,
+  RPO 1h / RTO 4h, Redis-is-disposable / PostgreSQL-is-authoritative);
+  `scripts/backup_restore_drill.sh`; `apps/core/tests/test_backup_restore.py`
+  dumps the live test DB, restores into a fresh scratch DB and asserts sale /
+  payment counts and revenue / payment totals are identical.
+  **Handoff:** `docs/FRONTEND_HANDOFF.md`, `docs/MANUAL_TESTING.md`,
+  `docs/PRODUCTION_ENV.md` (placeholders only). Dev-only `seed_demo` management
+  command — refuses under production settings, idempotent (`--reset` wipes the
+  DEMO branch), credentials from `DEMO_*` env vars or `--interactive`, no
+  committed passwords or real data. Full battery: **484 collected / 479 passed /
+  5 skipped** (real-Redis, CI-only), **92.95%** coverage; ruff / check /
+  makemigrations --check clean; `check --deploy --fail-level WARNING` clean
+  (1 silenced: W021); `openapi.yml` regenerated + `--fail-on-warn` clean
+  (+2 health paths); `pip-audit` clean; secret scan clean.

@@ -1456,7 +1456,7 @@ paths:
   /api/v1/health/:
     get:
       operationId: health_retrieve
-      description: Liveness/readiness probe. Public; never leaks configuration.
+      description: Combined legacy probe (kept for backwards compatibility).
       tags:
       - health
       responses:
@@ -1471,6 +1471,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Health'
+          description: ''
+  /api/v1/health/live/:
+    get:
+      operationId: health_live_retrieve
+      description: Process is running. No dependency checks; used by the container
+        probe.
+      tags:
+      - health
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Liveness'
+          description: ''
+  /api/v1/health/ready/:
+    get:
+      operationId: health_ready_retrieve
+      description: |-
+        Required dependencies (database + production Redis) are reachable.
+
+        Returns 503 when a required dependency is down. The body is intentionally
+        minimal — no versions, credentials or infrastructure addresses.
+      tags:
+      - health
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
           description: ''
   /api/v1/inventory/:
     get:
@@ -5026,6 +5063,13 @@ components:
       description: |-
         * `PAINT` - Paint
         * `EQUIPMENT` - Painting equipment
+    Liveness:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+      - status
     LoginRequest:
       type: object
       properties:
@@ -7120,6 +7164,22 @@ components:
           type: integer
       required:
       - updated
+    Readiness:
+      type: object
+      properties:
+        status:
+          type: string
+        database:
+          type: string
+        cache:
+          type: string
+        redis:
+          type: string
+      required:
+      - cache
+      - database
+      - redis
+      - status
     Receipt:
       type: object
       properties:

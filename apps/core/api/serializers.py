@@ -18,3 +18,14 @@ class HealthSerializer(serializers.Serializer):
     database = serializers.CharField()
     cache = serializers.CharField()
     time = serializers.DateTimeField()
+
+
+class LivenessSerializer(serializers.Serializer):
+    status = serializers.CharField()
+
+
+class ReadinessSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    database = serializers.CharField()
+    cache = serializers.CharField()
+    redis = serializers.CharField()

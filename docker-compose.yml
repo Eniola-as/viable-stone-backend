@@ -1,0 +1,29 @@
+# Local development helper. Brings up Redis for the shared cache, DRF
+# throttling and django-axes counters. PostgreSQL 18 is expected on the host
+# (this is not a production topology and deploys nothing).
+#
+# Usage:
+#   docker compose up -d
+#   REDIS_URL=redis://127.0.0.1:6379/0 CACHE_BACKEND=redis \
+#       .venv/Scripts/python manage.py runserver
+#
+# To pin by digest (recommended): after `docker pull redis:7.4.2-alpine`, run
+# `docker image inspect --format '{{index .RepoDigests 0}}' redis:7.4.2-alpine`
+# and replace the image line with  redis@sha256:<digest>.
+
+name: viable-stone-dev
+
+services:
+  redis:
+    image: redis:7.4.2-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      # 127.0.0.1 only — never exposed on the LAN.
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+    restart: unless-stopped

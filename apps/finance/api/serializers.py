@@ -48,6 +48,13 @@ class ExpenseSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Must be greater than zero.")
         return value
 
+    def validate_receipt_file(self, value):
+        if value:
+            from apps.core.validators import validate_private_upload
+
+            validate_private_upload(value)
+        return value
+
     def validate_category(self, category):
         request = self.context["request"]
         if category.branch_id != request.user.branch_id:

@@ -111,19 +111,25 @@ DATABASES = {
 # --------------------------------------------------------------------------- #
 # Cache / Redis                                                               #
 # --------------------------------------------------------------------------- #
-# Redis backs throttling, login counters and short-lived locks in production.
-# Local development and tests fall back to in-process memory so the stack runs
-# without a Redis server. Set CACHE_BACKEND=redis to opt in.
+# Redis backs shared caching, DRF throttling and django-axes counters. Local
+# development and tests may fall back to in-process memory so the stack runs
+# without a Redis server (docker compose up brings real Redis on 127.0.0.1).
+# Production *requires* REDIS_URL and never falls back — see production.py.
 
 REDIS_URL = env("REDIS_URL", default="redis://127.0.0.1:6379/0")
 CACHE_BACKEND = env("CACHE_BACKEND", default="locmem")
+# Set True where Redis is a hard dependency; the readiness probe then pings it.
+REDIS_HEALTHCHECK = env.bool("REDIS_HEALTHCHECK", default=False)
 
 if CACHE_BACKEND == "redis":
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
             "LOCATION": REDIS_URL,
-            "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "IGNORE_EXCEPTIONS": False,
+            },
         }
     }
 else:
@@ -133,6 +139,9 @@ else:
             "LOCATION": "viable-stone",
         }
     }
+
+# API docs / schema: open in dev, gated to owner+tech-admin or disabled in prod.
+API_DOCS_ENABLED = env.bool("API_DOCS_ENABLED", default=True)
 
 # --------------------------------------------------------------------------- #
 # Authentication                                                              #
@@ -315,8 +324,13 @@ PUSH_ENABLED = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and VAPID_ADMIN_EMAIL
 SENTRY_DSN = env("SENTRY_DSN", default="")
 
 # --------------------------------------------------------------------------- #
-# Logging — request-id aware, never logs secrets or full phone numbers        #
+# Logging — request-id aware, structured stdout, never logs secrets           #
 # --------------------------------------------------------------------------- #
+# LOG_FORMAT=json emits one JSON object per line (production / Railway);
+# anything else keeps the human-readable console format for local development.
+
+LOG_FORMAT = env("LOG_FORMAT", default="console")
+_LOG_FORMATTER = "json" if LOG_FORMAT == "json" else "standard"
 
 LOGGING = {
     "version": 1,
@@ -330,12 +344,13 @@ LOGGING = {
                 "%(asctime)s %(levelname)s %(name)s [req:%(request_id)s] %(message)s"
             ),
         },
+        "json": {"()": "apps.core.logging.JSONFormatter"},
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "filters": ["request_id"],
-            "formatter": "standard",
+            "formatter": _LOG_FORMATTER,
         },
     },
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", default="INFO")},
