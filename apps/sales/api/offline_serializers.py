@@ -3,10 +3,14 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.accounts.models import OfflineDeviceAuthorization, RegisteredDevice
+from apps.core.serializers import (
+    ControlCharSafeModelSerializer,
+    ControlCharSafeSerializer,
+)
 from apps.sales.models import OfflineSaleSyncRecord, PaymentMethod
 
 
-class OfflineDeviceSerializer(serializers.ModelSerializer):
+class OfflineDeviceSerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = RegisteredDevice
         fields = [
@@ -21,11 +25,11 @@ class OfflineDeviceSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class OfflineDeviceCreateSerializer(serializers.Serializer):
+class OfflineDeviceCreateSerializer(ControlCharSafeSerializer):
     name = serializers.CharField(max_length=100)
 
 
-class OfflineAuthorizationSerializer(serializers.ModelSerializer):
+class OfflineAuthorizationSerializer(ControlCharSafeModelSerializer):
     device_name = serializers.CharField(source="device.name", read_only=True)
     cashier_username = serializers.CharField(source="cashier.username", read_only=True)
     is_expired = serializers.BooleanField(read_only=True)
@@ -51,23 +55,23 @@ class OfflineAuthorizationSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class OfflineAuthorizationCreateSerializer(serializers.Serializer):
+class OfflineAuthorizationCreateSerializer(ControlCharSafeSerializer):
     device = serializers.UUIDField()
     cashier = serializers.UUIDField()
 
 
-class OfflineAuthorizationRevokeSerializer(serializers.Serializer):
+class OfflineAuthorizationRevokeSerializer(ControlCharSafeSerializer):
     reason = serializers.CharField(
         required=False, allow_blank=True, default="", max_length=300
     )
 
 
-class OfflineAuthorizationReplaceSerializer(serializers.Serializer):
+class OfflineAuthorizationReplaceSerializer(ControlCharSafeSerializer):
     device = serializers.UUIDField(required=False)
     cashier = serializers.UUIDField(required=False)
 
 
-class OfflineSessionEndSerializer(serializers.Serializer):
+class OfflineSessionEndSerializer(ControlCharSafeSerializer):
     force = serializers.BooleanField(default=False)
     mfa_confirmed = serializers.BooleanField(default=False)
     reason = serializers.CharField(
@@ -75,7 +79,7 @@ class OfflineSessionEndSerializer(serializers.Serializer):
     )
 
 
-class OfflineAuthorizationStatusSerializer(serializers.Serializer):
+class OfflineAuthorizationStatusSerializer(ControlCharSafeSerializer):
     authorization_id = serializers.UUIDField()
     status = serializers.CharField()
     expires_at = serializers.DateTimeField()
@@ -85,12 +89,12 @@ class OfflineAuthorizationStatusSerializer(serializers.Serializer):
     pending_review_count = serializers.IntegerField()
 
 
-class _OfflineItemSerializer(serializers.Serializer):
+class _OfflineItemSerializer(ControlCharSafeSerializer):
     variant_id = serializers.UUIDField()
     quantity = serializers.IntegerField(min_value=1)
 
 
-class _OfflinePaymentSerializer(serializers.Serializer):
+class _OfflinePaymentSerializer(ControlCharSafeSerializer):
     method = serializers.ChoiceField(choices=PaymentMethod.choices)
     amount = serializers.DecimalField(
         max_digits=14, decimal_places=2, min_value=Decimal("0.01")
@@ -103,7 +107,7 @@ class _OfflinePaymentSerializer(serializers.Serializer):
     )
 
 
-class OfflineSaleInputSerializer(serializers.Serializer):
+class OfflineSaleInputSerializer(ControlCharSafeSerializer):
     client_sale_id = serializers.UUIDField()
     device_sequence = serializers.IntegerField(min_value=1)
     offline_created_at = serializers.DateTimeField()
@@ -127,7 +131,7 @@ class OfflineSaleInputSerializer(serializers.Serializer):
         return value
 
 
-class OfflineSyncRequestSerializer(serializers.Serializer):
+class OfflineSyncRequestSerializer(ControlCharSafeSerializer):
     authorization_token = serializers.CharField(max_length=20000)
     sales = OfflineSaleInputSerializer(many=True)
 
@@ -137,12 +141,12 @@ class OfflineSyncRequestSerializer(serializers.Serializer):
         return value
 
 
-class OfflineTemporaryReceiptRequestSerializer(serializers.Serializer):
+class OfflineTemporaryReceiptRequestSerializer(ControlCharSafeSerializer):
     authorization_token = serializers.CharField(max_length=20000)
     sale = OfflineSaleInputSerializer()
 
 
-class OfflineSyncResultSerializer(serializers.Serializer):
+class OfflineSyncResultSerializer(ControlCharSafeSerializer):
     client_sale_id = serializers.CharField()
     device_sequence = serializers.IntegerField()
     outcome = serializers.CharField()
@@ -151,7 +155,7 @@ class OfflineSyncResultSerializer(serializers.Serializer):
     receipt_number = serializers.CharField(allow_null=True)
 
 
-class OfflineSyncRecordSerializer(serializers.ModelSerializer):
+class OfflineSyncRecordSerializer(ControlCharSafeModelSerializer):
     official_receipt_number = serializers.CharField(
         source="sale.receipt_number", read_only=True, default=None
     )
@@ -176,5 +180,5 @@ class OfflineSyncRecordSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class OfflineSyncRecordResolveSerializer(serializers.Serializer):
+class OfflineSyncRecordResolveSerializer(ControlCharSafeSerializer):
     note = serializers.CharField(min_length=5, max_length=500)

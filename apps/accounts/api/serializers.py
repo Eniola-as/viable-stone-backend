@@ -2,9 +2,13 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from apps.accounts.models import Branch, Role, User
+from apps.core.serializers import (
+    ControlCharSafeModelSerializer,
+    ControlCharSafeSerializer,
+)
 
 
-class BranchSerializer(serializers.ModelSerializer):
+class BranchSerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = Branch
         fields = [
@@ -22,12 +26,12 @@ class BranchSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
-class LoginSerializer(serializers.Serializer):
+class LoginSerializer(ControlCharSafeSerializer):
     username = serializers.CharField(write_only=True)
     password = serializers.CharField(write_only=True, style={"input_type": "password"})
 
 
-class PasswordChangeSerializer(serializers.Serializer):
+class PasswordChangeSerializer(ControlCharSafeSerializer):
     current_password = serializers.CharField(
         write_only=True, style={"input_type": "password"}
     )
@@ -40,26 +44,26 @@ class PasswordChangeSerializer(serializers.Serializer):
         return value
 
 
-class MFASetupResponseSerializer(serializers.Serializer):
+class MFASetupResponseSerializer(ControlCharSafeSerializer):
     secret = serializers.CharField(read_only=True)
     otpauth_url = serializers.CharField(read_only=True)
 
 
-class TokenSerializer(serializers.Serializer):
+class TokenSerializer(ControlCharSafeSerializer):
     token = serializers.CharField(write_only=True)
 
 
-class RecoveryCodeSerializer(serializers.Serializer):
+class RecoveryCodeSerializer(ControlCharSafeSerializer):
     code = serializers.CharField(write_only=True)
 
 
-class RecoveryCodesResponseSerializer(serializers.Serializer):
+class RecoveryCodesResponseSerializer(ControlCharSafeSerializer):
     recovery_codes = serializers.ListField(
         child=serializers.CharField(), read_only=True
     )
 
 
-class UserSelfSerializer(serializers.ModelSerializer):
+class UserSelfSerializer(ControlCharSafeModelSerializer):
     """The signed-in user's own safe profile. No cost/secret/audit fields."""
 
     branch_code = serializers.CharField(
@@ -89,7 +93,7 @@ class UserSelfSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class LoginResponseSerializer(serializers.Serializer):
+class LoginResponseSerializer(ControlCharSafeSerializer):
     mfa_required = serializers.BooleanField(read_only=True)
     mfa_enrolled = serializers.BooleanField(read_only=True)
     mfa_verified = serializers.BooleanField(read_only=True)
@@ -97,7 +101,7 @@ class LoginResponseSerializer(serializers.Serializer):
     user = UserSelfSerializer(read_only=True, allow_null=True)
 
 
-class OwnerUserSerializer(serializers.ModelSerializer):
+class OwnerUserSerializer(ControlCharSafeModelSerializer):
     """Owner-facing user management. Password is write-only; never echoed."""
 
     password = serializers.CharField(

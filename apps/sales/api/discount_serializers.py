@@ -2,15 +2,18 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.core.serializers import (
+    ControlCharSafeSerializer,
+)
 from apps.sales.models import PaymentMethod
 
 
-class _CartLineSerializer(serializers.Serializer):
+class _CartLineSerializer(ControlCharSafeSerializer):
     variant = serializers.UUIDField()
     quantity = serializers.IntegerField(min_value=1)
 
 
-class DraftCreateSerializer(serializers.Serializer):
+class DraftCreateSerializer(ControlCharSafeSerializer):
     client_sale_id = serializers.UUIDField()
     items = _CartLineSerializer(many=True)
     customer = serializers.DictField(required=False)
@@ -21,7 +24,7 @@ class DraftCreateSerializer(serializers.Serializer):
         return items
 
 
-class DraftCartSerializer(serializers.Serializer):
+class DraftCartSerializer(ControlCharSafeSerializer):
     items = _CartLineSerializer(many=True)
 
     def validate_items(self, items):
@@ -30,7 +33,7 @@ class DraftCartSerializer(serializers.Serializer):
         return items
 
 
-class DiscountRequestSerializer(serializers.Serializer):
+class DiscountRequestSerializer(ControlCharSafeSerializer):
     amount = serializers.DecimalField(
         max_digits=14, decimal_places=2, min_value=Decimal("0.01")
     )
@@ -42,7 +45,7 @@ class DiscountRequestSerializer(serializers.Serializer):
         return value
 
 
-class ApproveDiscountSerializer(serializers.Serializer):
+class ApproveDiscountSerializer(ControlCharSafeSerializer):
     amount = serializers.DecimalField(
         max_digits=14, decimal_places=2, min_value=Decimal("0.01")
     )
@@ -51,7 +54,7 @@ class ApproveDiscountSerializer(serializers.Serializer):
     )
 
 
-class _PaymentLineSerializer(serializers.Serializer):
+class _PaymentLineSerializer(ControlCharSafeSerializer):
     method = serializers.ChoiceField(choices=PaymentMethod.choices)
     amount = serializers.DecimalField(
         max_digits=14, decimal_places=2, min_value=Decimal("0.01")
@@ -64,7 +67,7 @@ class _PaymentLineSerializer(serializers.Serializer):
     )
 
 
-class FinaliseDraftSerializer(serializers.Serializer):
+class FinaliseDraftSerializer(ControlCharSafeSerializer):
     payments = _PaymentLineSerializer(many=True)
     client_finalize_id = serializers.UUIDField(required=False)
 

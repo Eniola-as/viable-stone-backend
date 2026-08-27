@@ -31,6 +31,8 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from apps.core.text import pdf_escape
+
 logger = logging.getLogger("apps.sales.receipts")
 
 _METHOD_LABELS = {"CASH": "Cash", "TRANSFER": "Transfer", "POS": "POS"}
@@ -193,10 +195,13 @@ def render_receipt_pdf(sale, *, compress: bool = True) -> bytes:
     story: list = []
 
     # --- Header: logo + identity ------------------------------------- #
-    identity_block = [Paragraph(ctx["business"]["name"], name_style)]
+    # Every user/owner-controlled string is escaped before it reaches a
+    # ReportLab Paragraph (which parses XML/HTML-ish markup). Literal <b> tags
+    # below are ours, never interpolated user text.
+    identity_block = [Paragraph(pdf_escape(ctx["business"]["name"]), name_style)]
     for key in ("address", "phone", "email"):
         if ctx["business"][key]:
-            identity_block.append(Paragraph(ctx["business"][key], small))
+            identity_block.append(Paragraph(pdf_escape(ctx["business"][key]), small))
 
     logo_path = _resolve_logo_path(_identity()["logo_path"])
     if logo_path:
@@ -226,22 +231,29 @@ def render_receipt_pdf(sale, *, compress: bool = True) -> bytes:
     # --- Meta block ------------------------------------------------- #
     meta_rows = [
         [
-            Paragraph(f"<b>Receipt No:</b> {ctx['receipt_number']}", label),
-            Paragraph(f"<b>Date:</b> {ctx['issued_at']}", label),
+            Paragraph(f"<b>Receipt No:</b> {pdf_escape(ctx['receipt_number'])}", label),
+            Paragraph(f"<b>Date:</b> {pdf_escape(ctx['issued_at'])}", label),
         ],
         [
             Paragraph(
-                f"<b>Branch:</b> {ctx['branch']['name']} ({ctx['branch']['code']})",
+                f"<b>Branch:</b> {pdf_escape(ctx['branch']['name'])} "
+                f"({pdf_escape(ctx['branch']['code'])})",
                 label,
             ),
-            Paragraph(f"<b>Cashier:</b> {ctx['cashier']}", label),
+            Paragraph(f"<b>Cashier:</b> {pdf_escape(ctx['cashier'])}", label),
         ],
     ]
     if ctx["customer"]:
         meta_rows.append(
             [
-                Paragraph(f"<b>Customer:</b> {ctx['customer']['name'] or '-'}", label),
-                Paragraph(f"<b>Phone:</b> {ctx['customer']['phone'] or '-'}", label),
+                Paragraph(
+                    f"<b>Customer:</b> {pdf_escape(ctx['customer']['name'] or '-')}",
+                    label,
+                ),
+                Paragraph(
+                    f"<b>Phone:</b> {pdf_escape(ctx['customer']['phone'] or '-')}",
+                    label,
+                ),
             ]
         )
     meta = Table(meta_rows, colWidths=[doc.width / 2] * 2)
@@ -271,10 +283,10 @@ def render_receipt_pdf(sale, *, compress: bool = True) -> bytes:
     for item in ctx["items"]:
         rows.append(
             [
-                Paragraph(item["description"], cell),
+                Paragraph(pdf_escape(item["description"]), cell),
                 Paragraph(str(item["quantity"]), num),
-                Paragraph(item["unit_price"], num),
-                Paragraph(item["line_total"], num),
+                Paragraph(pdf_escape(item["unit_price"]), num),
+                Paragraph(pdf_escape(item["line_total"]), num),
             ]
         )
     items_table = Table(rows, colWidths=[desc_w, qty_w, price_w, total_w], repeatRows=1)

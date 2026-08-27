@@ -3,6 +3,10 @@ from decimal import Decimal
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.core.serializers import (
+    ControlCharSafeModelSerializer,
+    ControlCharSafeSerializer,
+)
 from apps.sales.models import Customer, Payment, PaymentMethod, Sale, SaleItem
 from apps.sales.services.customers import mask_phone
 
@@ -11,7 +15,7 @@ from apps.sales.services.customers import mask_phone
 # --------------------------------------------------------------------------- #
 
 
-class CustomerSerializer(serializers.ModelSerializer):
+class CustomerSerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = Customer
         fields = ["id", "name", "phone", "created_at", "updated_at"]
@@ -28,7 +32,7 @@ class CustomerSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class CustomerListSerializer(serializers.ModelSerializer):
+class CustomerListSerializer(ControlCharSafeModelSerializer):
     """Broad list view — phone is masked for everyone."""
 
     phone = serializers.SerializerMethodField()
@@ -42,7 +46,7 @@ class CustomerListSerializer(serializers.ModelSerializer):
         return mask_phone(obj.phone)
 
 
-class CustomerInlineSerializer(serializers.Serializer):
+class CustomerInlineSerializer(ControlCharSafeSerializer):
     name = serializers.CharField(required=False, allow_blank=True, default="")
     phone = serializers.CharField(required=False, allow_blank=True, default="")
 
@@ -52,12 +56,12 @@ class CustomerInlineSerializer(serializers.Serializer):
 # --------------------------------------------------------------------------- #
 
 
-class SaleItemInputSerializer(serializers.Serializer):
+class SaleItemInputSerializer(ControlCharSafeSerializer):
     variant = serializers.UUIDField()
     quantity = serializers.IntegerField(min_value=1)
 
 
-class PaymentInputSerializer(serializers.Serializer):
+class PaymentInputSerializer(ControlCharSafeSerializer):
     method = serializers.ChoiceField(choices=PaymentMethod.choices)
     amount = serializers.DecimalField(
         max_digits=14, decimal_places=2, min_value=Decimal("0.01")
@@ -70,7 +74,7 @@ class PaymentInputSerializer(serializers.Serializer):
     )
 
 
-class SaleCreateSerializer(serializers.Serializer):
+class SaleCreateSerializer(ControlCharSafeSerializer):
     client_sale_id = serializers.UUIDField()
     items = SaleItemInputSerializer(many=True)
     payments = PaymentInputSerializer(many=True)
@@ -92,7 +96,7 @@ class SaleCreateSerializer(serializers.Serializer):
 # --------------------------------------------------------------------------- #
 
 
-class PaymentReadSerializer(serializers.ModelSerializer):
+class PaymentReadSerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = Payment
         fields = [
@@ -106,7 +110,7 @@ class PaymentReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class SaleItemReadSerializer(serializers.ModelSerializer):
+class SaleItemReadSerializer(ControlCharSafeModelSerializer):
     """Cashier-safe: snapshots and price, never cost."""
 
     class Meta:
@@ -131,7 +135,7 @@ class SaleItemOwnerSerializer(SaleItemReadSerializer):
         read_only_fields = fields
 
 
-class SaleReadSerializer(serializers.ModelSerializer):
+class SaleReadSerializer(ControlCharSafeModelSerializer):
     items = serializers.SerializerMethodField()
     payments = PaymentReadSerializer(many=True, read_only=True)
     cashier_username = serializers.CharField(source="cashier.username", read_only=True)
@@ -177,14 +181,14 @@ class SaleReadSerializer(serializers.ModelSerializer):
 # --------------------------------------------------------------------------- #
 
 
-class _BusinessSerializer(serializers.Serializer):
+class _BusinessSerializer(ControlCharSafeSerializer):
     name = serializers.CharField()
     phone = serializers.CharField(allow_blank=True)
     email = serializers.CharField(allow_blank=True)
     address = serializers.CharField(allow_blank=True)
 
 
-class _ReceiptItemSerializer(serializers.Serializer):
+class _ReceiptItemSerializer(ControlCharSafeSerializer):
     description = serializers.CharField()
     sku = serializers.CharField()
     quantity = serializers.IntegerField()
@@ -192,7 +196,7 @@ class _ReceiptItemSerializer(serializers.Serializer):
     line_total = serializers.CharField()
 
 
-class _ReceiptPaymentSerializer(serializers.Serializer):
+class _ReceiptPaymentSerializer(ControlCharSafeSerializer):
     method = serializers.CharField()
     label = serializers.CharField()
     amount = serializers.CharField()
@@ -201,13 +205,13 @@ class _ReceiptPaymentSerializer(serializers.Serializer):
     change = serializers.CharField(required=False)
 
 
-class _ReceiptPartySerializer(serializers.Serializer):
+class _ReceiptPartySerializer(ControlCharSafeSerializer):
     name = serializers.CharField(allow_blank=True)
     code = serializers.CharField(required=False)
     phone = serializers.CharField(required=False, allow_blank=True)
 
 
-class ReceiptSerializer(serializers.Serializer):
+class ReceiptSerializer(ControlCharSafeSerializer):
     business = _BusinessSerializer()
     currency = serializers.CharField()
     receipt_number = serializers.CharField()

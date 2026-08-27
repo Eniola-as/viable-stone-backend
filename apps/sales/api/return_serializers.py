@@ -2,6 +2,10 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.core.serializers import (
+    ControlCharSafeModelSerializer,
+    ControlCharSafeSerializer,
+)
 from apps.sales.models import (
     ApprovalRequest,
     PaymentMethod,
@@ -17,12 +21,12 @@ _MONEY = {"max_digits": 14, "decimal_places": 2}
 # --- Submit a return request ----------------------------------------- #
 
 
-class ReturnRequestLineSerializer(serializers.Serializer):
+class ReturnRequestLineSerializer(ControlCharSafeSerializer):
     sale_item = serializers.UUIDField()
     quantity = serializers.IntegerField(min_value=1)
 
 
-class ReturnRequestCreateSerializer(serializers.Serializer):
+class ReturnRequestCreateSerializer(ControlCharSafeSerializer):
     reason = serializers.CharField(max_length=2000)
     client_return_id = serializers.UUIDField()
     lines = ReturnRequestLineSerializer(many=True)
@@ -36,13 +40,13 @@ class ReturnRequestCreateSerializer(serializers.Serializer):
 # --- Approve / reject --------------------------------------------- #
 
 
-class ApprovedLineSerializer(serializers.Serializer):
+class ApprovedLineSerializer(ControlCharSafeSerializer):
     sale_item = serializers.UUIDField()
     quantity = serializers.IntegerField(min_value=1)
     condition = serializers.ChoiceField(choices=ReturnCondition.choices)
 
 
-class RefundLineSerializer(serializers.Serializer):
+class RefundLineSerializer(ControlCharSafeSerializer):
     method = serializers.ChoiceField(choices=PaymentMethod.choices)
     amount = serializers.DecimalField(min_value=Decimal("0.01"), **_MONEY)
     reference = serializers.CharField(
@@ -50,7 +54,7 @@ class RefundLineSerializer(serializers.Serializer):
     )
 
 
-class ApproveReturnSerializer(serializers.Serializer):
+class ApproveReturnSerializer(ControlCharSafeSerializer):
     reviewer_note = serializers.CharField(
         required=False, allow_blank=True, default="", max_length=2000
     )
@@ -66,7 +70,7 @@ class ApproveReturnSerializer(serializers.Serializer):
         return attrs
 
 
-class RejectReturnSerializer(serializers.Serializer):
+class RejectReturnSerializer(ControlCharSafeSerializer):
     reviewer_note = serializers.CharField(
         required=False, allow_blank=True, default="", max_length=2000
     )
@@ -75,7 +79,7 @@ class RejectReturnSerializer(serializers.Serializer):
 # --- Read representations -------------------------------------- #
 
 
-class ApprovalRequestSerializer(serializers.ModelSerializer):
+class ApprovalRequestSerializer(ControlCharSafeModelSerializer):
     requested_by_username = serializers.CharField(
         source="requested_by.username", read_only=True
     )
@@ -102,14 +106,14 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class RefundReadSerializer(serializers.ModelSerializer):
+class RefundReadSerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = Refund
         fields = ["id", "method", "amount", "reference", "issued_by", "created_at"]
         read_only_fields = fields
 
 
-class SaleReturnItemReadSerializer(serializers.ModelSerializer):
+class SaleReturnItemReadSerializer(ControlCharSafeModelSerializer):
     sku = serializers.CharField(
         source="original_sale_item.sku_snapshot", read_only=True
     )
@@ -133,7 +137,7 @@ class SaleReturnItemReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class SaleReturnReadSerializer(serializers.ModelSerializer):
+class SaleReturnReadSerializer(ControlCharSafeModelSerializer):
     items = SaleReturnItemReadSerializer(many=True, read_only=True)
     refunds = RefundReadSerializer(many=True, read_only=True)
 

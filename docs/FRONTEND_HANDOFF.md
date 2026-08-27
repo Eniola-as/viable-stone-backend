@@ -6,6 +6,11 @@ with zero warnings). This document explains the cross-cutting behaviour that a
 schema cannot express. **No endpoints are invented here** — everything below is
 in `openapi.yml`.
 
+The contract is **frozen**: its path/method/operationId surface is snapshotted
+in `tests/acceptance/openapi_contract_snapshot.json` and a test fails the build
+if it changes without a reviewed update. 99 paths, 139 operations. Treat a
+`code` value or a route change as a breaking-change signal.
+
 ## API base URL
 
 * Local: `http://127.0.0.1:8000/api/v1/`
@@ -76,7 +81,68 @@ List endpoints: `?page=`, `?page_size=` (default 25, max 100).
 ```
 
 Ordering via `?ordering=field` / `?ordering=-field` where documented; text
-search via `?search=` where documented.
+search via `?search=` where documented. The `search` value is always treated as
+a literal substring — `%`, `_` and SQL fragments match nothing, they do not
+error.
+
+## Money & dates
+
+* **Money is always a string.** JSON model/report fields are exact decimal
+  strings with 2 places — `"1000.00"`, `"0.00"`, `"-5.00"`. Parse with a
+  decimal library, never `parseFloat`. Send money as a string too.
+* **Currency has no symbol** in model/report JSON. The **JSON receipt**
+  (`GET /sales/{id}/receipt/`) and the PDF are display documents: there the
+  money fields are *grouped for printing* — `"1,234.00"` — and currency shows
+  as `NGN` (the built-in PDF fonts have no ₦ glyph). Do not parse receipt money
+  fields as numbers; show them as-is.
+* **Timestamps** (`created_at`, `completed_at`, `issued_at_iso`, …) are ISO-8601
+  with a `+01:00` offset (Africa/Lagos). `*_iso` fields are machine-readable;
+  `issued_at` on the receipt is a pre-formatted human string.
+* **Business dates** (`expense_date`, report `start`/`end`, restock `date`) are
+  plain `YYYY-MM-DD` in Africa/Lagos local time. Report ranges are
+  **end-inclusive**. Send dates as `YYYY-MM-DD`; `31/02/2026` and other formats
+  are rejected `400`.
+
+## Rendering API text safely (XSS)
+
+The API returns user- and owner-entered text (product names, descriptions,
+customer names, expense notes, reasons, reviewer notes) **verbatim** as plain
+JSON strings. It does **not** HTML-escape them and does not sanitise them —
+that is the client's job at render time.
+
+* Render every API string with `textContent` / React `{value}` / Vue `{{ }}` /
+  Angular interpolation — anything that auto-escapes.
+* **Never** feed an API value to `innerHTML`, `outerHTML`,
+  `dangerouslySetInnerHTML`, `v-html`, `[innerHTML]`, `document.write`,
+  `insertAdjacentHTML`, or a non-escaping template.
+* Do not build DOM from API strings by concatenation. Do not put an API string
+  into an `href`/`src` without validating the scheme (`javascript:` etc.).
+
+The backend already guarantees control characters (NUL, C0/C1) are rejected on
+input and that text reaching the PDF is escaped, so a value like
+`<script>alert(1)</script>` is stored and returned as literal text and is inert
+unless *you* inject it as HTML.
+
+## Fields the frontend must never compute or trust
+
+The server is the sole authority for these. Always read them from the response;
+never calculate them client-side and never send them expecting them to be used:
+
+| Field(s) | Owned by |
+|---|---|
+| `subtotal`, `discount_total`, `total`, `line_total`, `change_due` | `create_sale` / `finalise_draft` from active prices |
+| `unit_price_snapshot`, `product_name_snapshot`, `sku_snapshot`, `variant_description_snapshot` | captured at sale time; immutable |
+| `unit_cost_snapshot`, `average_unit_cost`, `stock_value`, `cogs`, `gross_profit`, `net_profit` | owner-only; never in employee responses |
+| `receipt_number` | per-branch-per-day sequence, assigned on completion |
+| `status`, `status_label` | server state machine |
+| approved discount `amount` | owner approval only (`0 < amount < subtotal`) |
+| refund amounts on a return | server, net of any discount |
+| offline sync `outcome`, `receipt_number`, recomputed prices/totals | server recomputes everything from the **signed snapshot**; client prices/totals are ignored |
+| any `id`, `created_at`, `updated_at`, `branch` | server-assigned; sending them is silently ignored |
+
+Sending an unknown or read-only field is **not an error** — it is silently
+dropped. Rely on that: a newer client can send an extra field to an older
+backend without breaking.
 
 ## Idempotency keys
 

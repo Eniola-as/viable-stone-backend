@@ -65,9 +65,12 @@ SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 # DRF throttling and django-axes counters share this Redis cache (see base.py).
 
 # --------------------------------------------------------------------------- #
-# API documentation — locked down                                             #
+# API documentation + Django admin — locked down                              #
 # --------------------------------------------------------------------------- #
 API_DOCS_ENABLED = env.bool("API_DOCS_ENABLED", default=False)
+# The Django admin is not routed in production. /admin/ returns 404. There is
+# deliberately no alternate admin URL.
+ADMIN_ENABLED = env.bool("DJANGO_ADMIN_ENABLED", default=False)
 
 # --------------------------------------------------------------------------- #
 # Logging — structured JSON to stdout                                         #

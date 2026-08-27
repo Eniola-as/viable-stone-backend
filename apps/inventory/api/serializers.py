@@ -7,6 +7,10 @@ from rest_framework import serializers
 from apps.catalog.models import ProductVariant
 from apps.catalog.selectors import current_price
 from apps.core.money import to_money
+from apps.core.serializers import (
+    ControlCharSafeModelSerializer,
+    ControlCharSafeSerializer,
+)
 from apps.inventory.models import (
     InventoryBalance,
     Restock,
@@ -22,7 +26,7 @@ _MONEY_FIELD = serializers.DecimalField(
 )
 
 
-class SupplierSerializer(serializers.ModelSerializer):
+class SupplierSerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = Supplier
         fields = [
@@ -43,7 +47,7 @@ class SupplierSerializer(serializers.ModelSerializer):
 # --- Restock ------------------------------------------------------------- #
 
 
-class RestockItemWriteSerializer(serializers.Serializer):
+class RestockItemWriteSerializer(ControlCharSafeSerializer):
     variant = serializers.PrimaryKeyRelatedField(queryset=ProductVariant.objects.all())
     quantity = serializers.IntegerField(min_value=1)
     unit_cost = serializers.DecimalField(
@@ -51,7 +55,7 @@ class RestockItemWriteSerializer(serializers.Serializer):
     )
 
 
-class RestockItemReadSerializer(serializers.ModelSerializer):
+class RestockItemReadSerializer(ControlCharSafeModelSerializer):
     variant_sku = serializers.CharField(source="variant.sku", read_only=True)
 
     class Meta:
@@ -60,7 +64,7 @@ class RestockItemReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class RestockWriteSerializer(serializers.ModelSerializer):
+class RestockWriteSerializer(ControlCharSafeModelSerializer):
     items = RestockItemWriteSerializer(many=True, write_only=True)
 
     class Meta:
@@ -126,7 +130,7 @@ class RestockWriteSerializer(serializers.ModelSerializer):
         return restock
 
 
-class RestockReadSerializer(serializers.ModelSerializer):
+class RestockReadSerializer(ControlCharSafeModelSerializer):
     items = RestockItemReadSerializer(many=True, read_only=True)
     supplier_name = serializers.CharField(source="supplier.name", read_only=True)
 
@@ -154,7 +158,7 @@ class RestockReadSerializer(serializers.ModelSerializer):
 # --- Inventory balances ------------------------------------------------- #
 
 
-class _BaseBalanceSerializer(serializers.ModelSerializer):
+class _BaseBalanceSerializer(ControlCharSafeModelSerializer):
     variant_sku = serializers.CharField(source="variant.sku", read_only=True)
     product_name = serializers.CharField(source="variant.product.name", read_only=True)
     variant_description = serializers.CharField(
@@ -225,7 +229,7 @@ class InventoryBalanceOwnerSerializer(_BaseBalanceSerializer):
         return str(to_money(Decimal(balance.quantity) * balance.average_unit_cost))
 
 
-class StockMovementSerializer(serializers.ModelSerializer):
+class StockMovementSerializer(ControlCharSafeModelSerializer):
     variant_sku = serializers.CharField(source="variant.sku", read_only=True)
 
     class Meta:
@@ -246,7 +250,7 @@ class StockMovementSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class OpeningStockSerializer(serializers.Serializer):
+class OpeningStockSerializer(ControlCharSafeSerializer):
     variant = serializers.PrimaryKeyRelatedField(queryset=ProductVariant.objects.all())
     quantity = serializers.IntegerField(min_value=1)
     unit_cost = serializers.DecimalField(
@@ -254,7 +258,7 @@ class OpeningStockSerializer(serializers.Serializer):
     )
 
 
-class StockAdjustmentSerializer(serializers.Serializer):
+class StockAdjustmentSerializer(ControlCharSafeSerializer):
     variant = serializers.UUIDField()
     direction = serializers.ChoiceField(choices=["INCREASE", "DECREASE"])
     quantity = serializers.IntegerField(min_value=1)
@@ -265,12 +269,12 @@ class StockAdjustmentSerializer(serializers.Serializer):
 # --- Stock counts ----------------------------------------------------- #
 
 
-class StockCountItemWriteSerializer(serializers.Serializer):
+class StockCountItemWriteSerializer(ControlCharSafeSerializer):
     variant = serializers.PrimaryKeyRelatedField(queryset=ProductVariant.objects.all())
     counted_quantity = serializers.IntegerField(min_value=0)
 
 
-class StockCountItemReadSerializer(serializers.ModelSerializer):
+class StockCountItemReadSerializer(ControlCharSafeModelSerializer):
     variant_sku = serializers.CharField(source="variant.sku", read_only=True)
 
     class Meta:
@@ -286,7 +290,7 @@ class StockCountItemReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class StockCountWriteSerializer(serializers.ModelSerializer):
+class StockCountWriteSerializer(ControlCharSafeModelSerializer):
     items = StockCountItemWriteSerializer(many=True, write_only=True)
 
     class Meta:
@@ -331,7 +335,7 @@ class StockCountWriteSerializer(serializers.ModelSerializer):
         return count
 
 
-class StockCountReadSerializer(serializers.ModelSerializer):
+class StockCountReadSerializer(ControlCharSafeModelSerializer):
     items = StockCountItemReadSerializer(many=True, read_only=True)
 
     class Meta:

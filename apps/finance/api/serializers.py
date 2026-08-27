@@ -2,19 +2,23 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.core.serializers import (
+    ControlCharSafeModelSerializer,
+    ControlCharSafeSerializer,
+)
 from apps.finance.models import Expense, ExpenseCategory
 
 _MONEY = {"max_digits": 18, "decimal_places": 2}
 
 
-class ExpenseCategorySerializer(serializers.ModelSerializer):
+class ExpenseCategorySerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = ExpenseCategory
         fields = ["id", "name", "is_active", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
-class ExpenseSerializer(serializers.ModelSerializer):
+class ExpenseSerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = Expense
         fields = [
@@ -70,7 +74,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ExpenseVoidSerializer(serializers.Serializer):
+class ExpenseVoidSerializer(ControlCharSafeSerializer):
     reason = serializers.CharField(max_length=500)
 
     def validate_reason(self, value):
@@ -82,7 +86,7 @@ class ExpenseVoidSerializer(serializers.Serializer):
 # --- Report response schemas ------------------------------------------- #
 
 
-class ProfitReportSerializer(serializers.Serializer):
+class ProfitReportSerializer(ControlCharSafeSerializer):
     period = serializers.CharField()
     start = serializers.DateField()
     end = serializers.DateField()
@@ -97,7 +101,7 @@ class ProfitReportSerializer(serializers.Serializer):
     sales_count = serializers.IntegerField()
 
 
-class BestSellerSerializer(serializers.Serializer):
+class BestSellerSerializer(ControlCharSafeSerializer):
     variant = serializers.UUIDField()
     sku = serializers.CharField()
     product_name = serializers.CharField()
@@ -105,7 +109,7 @@ class BestSellerSerializer(serializers.Serializer):
     revenue = serializers.DecimalField(**_MONEY)
 
 
-class SlowMoverSerializer(serializers.Serializer):
+class SlowMoverSerializer(ControlCharSafeSerializer):
     variant = serializers.UUIDField()
     sku = serializers.CharField()
     product_name = serializers.CharField()
@@ -113,7 +117,7 @@ class SlowMoverSerializer(serializers.Serializer):
     quantity_sold = serializers.IntegerField()
 
 
-class InventorySummarySerializer(serializers.Serializer):
+class InventorySummarySerializer(ControlCharSafeSerializer):
     stock_value = serializers.DecimalField(**_MONEY)
     low_stock_count = serializers.IntegerField()
     distinct_variants_in_stock = serializers.IntegerField()

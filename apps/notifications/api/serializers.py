@@ -2,12 +2,16 @@ from urllib.parse import urlparse
 
 from rest_framework import serializers
 
+from apps.core.serializers import (
+    ControlCharSafeModelSerializer,
+    ControlCharSafeSerializer,
+)
 from apps.notifications.models import Notification, PushSubscription
 
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
 
 
-class NotificationSerializer(serializers.ModelSerializer):
+class NotificationSerializer(ControlCharSafeModelSerializer):
     """Read-only view of a notification. Carries no cost, profit, audit or
     private customer data — only the safe title/message and a deep-link path."""
 
@@ -28,15 +32,15 @@ class NotificationSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class UnreadCountSerializer(serializers.Serializer):
+class UnreadCountSerializer(ControlCharSafeSerializer):
     unread = serializers.IntegerField()
 
 
-class ReadAllResultSerializer(serializers.Serializer):
+class ReadAllResultSerializer(ControlCharSafeSerializer):
     updated = serializers.IntegerField()
 
 
-class PushSubscriptionSerializer(serializers.ModelSerializer):
+class PushSubscriptionSerializer(ControlCharSafeModelSerializer):
     """Read view — the p256dh / auth secrets are never echoed back."""
 
     class Meta:
@@ -53,7 +57,7 @@ class PushSubscriptionSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class PushSubscriptionWriteSerializer(serializers.Serializer):
+class PushSubscriptionWriteSerializer(ControlCharSafeSerializer):
     endpoint = serializers.URLField(max_length=500)
     p256dh = serializers.CharField(min_length=80, max_length=200)
     auth = serializers.CharField(min_length=16, max_length=100)
@@ -74,5 +78,5 @@ class PushSubscriptionWriteSerializer(serializers.Serializer):
         )
 
 
-class VapidPublicKeySerializer(serializers.Serializer):
+class VapidPublicKeySerializer(ControlCharSafeSerializer):
     public_key = serializers.CharField()

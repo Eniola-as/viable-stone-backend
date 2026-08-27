@@ -24,8 +24,41 @@ from rest_framework.settings import api_settings
 from apps.core.request_context import get_request_id
 
 logger = logging.getLogger("apps.core.exceptions")
+security_logger = logging.getLogger("apps.security")
 
 _NON_FIELD_KEYS = {"non_field_errors", api_settings.NON_FIELD_ERRORS_KEY}
+
+# Coded errors worth a structured security-log line. Never logs the request
+# body, headers, credentials, tokens, payment references or phone numbers —
+# only the coordinates needed to investigate.
+_SECURITY_EVENT_CODES = {
+    "throttled": "rate_limited",
+    "permission_denied": "permission_denied",
+    "not_authenticated": "authentication_required",
+    "authentication_failed": "authentication_failed",
+    "invalid_signature": "invalid_offline_signature",
+}
+
+
+def _log_security_event(exc, context, code: str, status_code: int) -> None:
+    event = _SECURITY_EVENT_CODES.get(code)
+    if event is None:
+        return
+    request = context.get("request") if isinstance(context, dict) else None
+    security_logger.warning(
+        "security_event",
+        extra={
+            "event": event,
+            "code": code,
+            "status": status_code,
+            "method": getattr(request, "method", None),
+            "path": getattr(request, "path", None),
+            "request_id": get_request_id(),
+            "user_id": (
+                str(getattr(getattr(request, "user", None), "id", None) or "") or None
+            ),
+        },
+    )
 
 
 class APIError(drf_exc.APIException):
@@ -128,6 +161,18 @@ def api_exception_handler(exc, context):
         # Unhandled exception -> log the full trace server-side, return a
         # generic 500 to the client with no traceback or internals.
         logger.exception("Unhandled API exception [request_id=%s]", request_id)
+        request = context.get("request") if isinstance(context, dict) else None
+        security_logger.error(
+            "security_event",
+            extra={
+                "event": "server_error",
+                "code": "server_error",
+                "status": 500,
+                "method": getattr(request, "method", None),
+                "path": getattr(request, "path", None),
+                "request_id": request_id,
+            },
+        )
         return Response(
             {
                 "code": "server_error",
@@ -142,6 +187,7 @@ def api_exception_handler(exc, context):
         )
 
     code, message, field_errors = _normalise(exc, response)
+    _log_security_event(exc, context, code, response.status_code)
     headers = {
         k: response[k]
         for k in ("Retry-After", "WWW-Authenticate", "Allow")

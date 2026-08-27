@@ -1,0 +1,482 @@
+{
+  "operationIds": [
+    "approvals_approve_create",
+    "approvals_list",
+    "approvals_reject_create",
+    "approvals_retrieve",
+    "audit_logs_list",
+    "audit_logs_retrieve",
+    "auth_csrf_retrieve",
+    "auth_login_create",
+    "auth_logout_create",
+    "auth_me_retrieve",
+    "auth_mfa_recovery_codes_regenerate_create",
+    "auth_mfa_recovery_create",
+    "auth_mfa_setup_confirm_create",
+    "auth_mfa_setup_create",
+    "auth_mfa_verify_create",
+    "auth_password_change_create",
+    "branches_create",
+    "branches_list",
+    "branches_partial_update",
+    "branches_retrieve",
+    "branches_update",
+    "brands_create",
+    "brands_list",
+    "brands_partial_update",
+    "brands_retrieve",
+    "brands_update",
+    "categories_create",
+    "categories_list",
+    "categories_partial_update",
+    "categories_retrieve",
+    "categories_update",
+    "customers_create",
+    "customers_list",
+    "customers_partial_update",
+    "customers_retrieve",
+    "customers_update",
+    "expense_categories_create",
+    "expense_categories_list",
+    "expense_categories_partial_update",
+    "expense_categories_retrieve",
+    "expense_categories_update",
+    "expenses_create",
+    "expenses_list",
+    "expenses_partial_update",
+    "expenses_retrieve",
+    "expenses_update",
+    "expenses_void_create",
+    "health_live_retrieve",
+    "health_ready_retrieve",
+    "health_retrieve",
+    "inventory_adjustments_create",
+    "inventory_list",
+    "inventory_low_stock_retrieve",
+    "inventory_movements_retrieve",
+    "inventory_opening_create",
+    "inventory_stock_value_retrieve",
+    "notifications_list",
+    "notifications_read_all_create",
+    "notifications_read_create",
+    "notifications_retrieve",
+    "notifications_unread_count_retrieve",
+    "offline_authorizations_create",
+    "offline_authorizations_end_session_create",
+    "offline_authorizations_list",
+    "offline_authorizations_replace_create",
+    "offline_authorizations_retrieve",
+    "offline_authorizations_revoke_create",
+    "offline_authorizations_status_retrieve",
+    "offline_devices_create",
+    "offline_devices_list",
+    "offline_devices_replace_create",
+    "offline_devices_retrieve",
+    "offline_devices_revoke_create",
+    "offline_sales_retrieve",
+    "offline_sync_create",
+    "offline_sync_records_list",
+    "offline_sync_records_resolve_create",
+    "offline_sync_records_retrieve",
+    "offline_temporary_receipt_create",
+    "products_create",
+    "products_list",
+    "products_partial_update",
+    "products_retrieve",
+    "products_update",
+    "push_subscriptions_create",
+    "push_subscriptions_deactivate_create",
+    "push_subscriptions_destroy",
+    "push_subscriptions_list",
+    "push_subscriptions_public_key_retrieve",
+    "push_subscriptions_retrieve",
+    "reports_best_sellers_list",
+    "reports_inventory_retrieve",
+    "reports_profit_retrieve",
+    "reports_slow_movers_list",
+    "restocks_confirm_create",
+    "restocks_create",
+    "restocks_destroy",
+    "restocks_list",
+    "restocks_partial_update",
+    "restocks_retrieve",
+    "restocks_update",
+    "returns_list",
+    "returns_retrieve",
+    "sales_cancel_create",
+    "sales_create",
+    "sales_discount_requests_create",
+    "sales_draft_cart_update",
+    "sales_drafts_create",
+    "sales_finalise_create",
+    "sales_list",
+    "sales_receipt.pdf_retrieve",
+    "sales_receipt_retrieve",
+    "sales_retrieve",
+    "sales_return_requests_create",
+    "stock_counts_apply_create",
+    "stock_counts_create",
+    "stock_counts_list",
+    "stock_counts_retrieve",
+    "stock_counts_submit_create",
+    "suppliers_create",
+    "suppliers_list",
+    "suppliers_partial_update",
+    "suppliers_retrieve",
+    "suppliers_update",
+    "users_activate_create",
+    "users_create",
+    "users_deactivate_create",
+    "users_list",
+    "users_partial_update",
+    "users_retrieve",
+    "users_update",
+    "variants_create",
+    "variants_current_price_retrieve",
+    "variants_list",
+    "variants_partial_update",
+    "variants_price_create",
+    "variants_price_history_list",
+    "variants_retrieve",
+    "variants_update"
+  ],
+  "paths": {
+    "/api/v1/approvals/": [
+      "get"
+    ],
+    "/api/v1/approvals/{id}/": [
+      "get"
+    ],
+    "/api/v1/approvals/{id}/approve/": [
+      "post"
+    ],
+    "/api/v1/approvals/{id}/reject/": [
+      "post"
+    ],
+    "/api/v1/audit-logs/": [
+      "get"
+    ],
+    "/api/v1/audit-logs/{id}/": [
+      "get"
+    ],
+    "/api/v1/auth/csrf/": [
+      "get"
+    ],
+    "/api/v1/auth/login/": [
+      "post"
+    ],
+    "/api/v1/auth/logout/": [
+      "post"
+    ],
+    "/api/v1/auth/me/": [
+      "get"
+    ],
+    "/api/v1/auth/mfa/recovery-codes/regenerate/": [
+      "post"
+    ],
+    "/api/v1/auth/mfa/recovery/": [
+      "post"
+    ],
+    "/api/v1/auth/mfa/setup/": [
+      "post"
+    ],
+    "/api/v1/auth/mfa/setup/confirm/": [
+      "post"
+    ],
+    "/api/v1/auth/mfa/verify/": [
+      "post"
+    ],
+    "/api/v1/auth/password/change/": [
+      "post"
+    ],
+    "/api/v1/branches/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/branches/{id}/": [
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/brands/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/brands/{id}/": [
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/categories/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/categories/{id}/": [
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/customers/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/customers/{id}/": [
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/expense-categories/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/expense-categories/{id}/": [
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/expenses/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/expenses/{id}/": [
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/expenses/{id}/void/": [
+      "post"
+    ],
+    "/api/v1/health/": [
+      "get"
+    ],
+    "/api/v1/health/live/": [
+      "get"
+    ],
+    "/api/v1/health/ready/": [
+      "get"
+    ],
+    "/api/v1/inventory/": [
+      "get"
+    ],
+    "/api/v1/inventory/adjustments/": [
+      "post"
+    ],
+    "/api/v1/inventory/low-stock/": [
+      "get"
+    ],
+    "/api/v1/inventory/movements/": [
+      "get"
+    ],
+    "/api/v1/inventory/opening/": [
+      "post"
+    ],
+    "/api/v1/inventory/stock-value/": [
+      "get"
+    ],
+    "/api/v1/notifications/": [
+      "get"
+    ],
+    "/api/v1/notifications/read-all/": [
+      "post"
+    ],
+    "/api/v1/notifications/unread-count/": [
+      "get"
+    ],
+    "/api/v1/notifications/{id}/": [
+      "get"
+    ],
+    "/api/v1/notifications/{id}/read/": [
+      "post"
+    ],
+    "/api/v1/offline/authorizations/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/offline/authorizations/{id}/": [
+      "get"
+    ],
+    "/api/v1/offline/authorizations/{id}/end-session/": [
+      "post"
+    ],
+    "/api/v1/offline/authorizations/{id}/replace/": [
+      "post"
+    ],
+    "/api/v1/offline/authorizations/{id}/revoke/": [
+      "post"
+    ],
+    "/api/v1/offline/authorizations/{id}/status/": [
+      "get"
+    ],
+    "/api/v1/offline/devices/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/offline/devices/{id}/": [
+      "get"
+    ],
+    "/api/v1/offline/devices/{id}/replace/": [
+      "post"
+    ],
+    "/api/v1/offline/devices/{id}/revoke/": [
+      "post"
+    ],
+    "/api/v1/offline/sales/{client_sale_id}/": [
+      "get"
+    ],
+    "/api/v1/offline/sync-records/": [
+      "get"
+    ],
+    "/api/v1/offline/sync-records/{id}/": [
+      "get"
+    ],
+    "/api/v1/offline/sync-records/{id}/resolve/": [
+      "post"
+    ],
+    "/api/v1/offline/sync/": [
+      "post"
+    ],
+    "/api/v1/offline/temporary-receipt/": [
+      "post"
+    ],
+    "/api/v1/products/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/products/{id}/": [
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/push-subscriptions/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/push-subscriptions/public-key/": [
+      "get"
+    ],
+    "/api/v1/push-subscriptions/{id}/": [
+      "delete",
+      "get"
+    ],
+    "/api/v1/push-subscriptions/{id}/deactivate/": [
+      "post"
+    ],
+    "/api/v1/reports/best-sellers/": [
+      "get"
+    ],
+    "/api/v1/reports/inventory/": [
+      "get"
+    ],
+    "/api/v1/reports/profit/": [
+      "get"
+    ],
+    "/api/v1/reports/slow-movers/": [
+      "get"
+    ],
+    "/api/v1/restocks/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/restocks/{id}/": [
+      "delete",
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/restocks/{id}/confirm/": [
+      "post"
+    ],
+    "/api/v1/returns/": [
+      "get"
+    ],
+    "/api/v1/returns/{id}/": [
+      "get"
+    ],
+    "/api/v1/sales/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/sales/drafts/": [
+      "post"
+    ],
+    "/api/v1/sales/{id}/": [
+      "get"
+    ],
+    "/api/v1/sales/{id}/cancel/": [
+      "post"
+    ],
+    "/api/v1/sales/{id}/discount-requests/": [
+      "post"
+    ],
+    "/api/v1/sales/{id}/draft-cart/": [
+      "put"
+    ],
+    "/api/v1/sales/{id}/finalise/": [
+      "post"
+    ],
+    "/api/v1/sales/{id}/receipt.pdf": [
+      "get"
+    ],
+    "/api/v1/sales/{id}/receipt/": [
+      "get"
+    ],
+    "/api/v1/sales/{id}/return-requests/": [
+      "post"
+    ],
+    "/api/v1/stock-counts/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/stock-counts/{id}/": [
+      "get"
+    ],
+    "/api/v1/stock-counts/{id}/apply/": [
+      "post"
+    ],
+    "/api/v1/stock-counts/{id}/submit/": [
+      "post"
+    ],
+    "/api/v1/suppliers/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/suppliers/{id}/": [
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/users/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/users/{id}/": [
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/users/{id}/activate/": [
+      "post"
+    ],
+    "/api/v1/users/{id}/deactivate/": [
+      "post"
+    ],
+    "/api/v1/variants/": [
+      "get",
+      "post"
+    ],
+    "/api/v1/variants/{id}/": [
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/variants/{id}/current-price/": [
+      "get"
+    ],
+    "/api/v1/variants/{id}/price-history/": [
+      "get"
+    ],
+    "/api/v1/variants/{id}/price/": [
+      "post"
+    ]
+  }
+}

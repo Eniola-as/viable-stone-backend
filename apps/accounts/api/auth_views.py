@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from axes.handlers.proxy import AxesProxyHandler
 from django.contrib.auth import authenticate, update_session_auth_hash
 from django.contrib.auth import login as django_login
@@ -35,6 +37,31 @@ from apps.accounts.services.recovery import (
 from apps.core.authentication import enforce_csrf
 from apps.core.exceptions import APIError
 from apps.core.permissions import IsAuthenticatedAndMFAVerified, mfa_satisfied
+from apps.core.request_context import get_request_id
+
+security_logger = logging.getLogger("apps.security")
+
+
+def _log_auth_failure(request, username: str, code: str) -> None:
+    """Structured security line for a rejected sign-in.
+
+    Never records the submitted password or any credential value — only the
+    username tried, the client IP and the path, so repeated abuse (and the
+    django-axes lockout that follows) can be investigated.
+    """
+
+    security_logger.warning(
+        "security_event",
+        extra={
+            "event": "auth_failed",
+            "code": code,
+            "status": 401 if code == "invalid_credentials" else 403,
+            "path": getattr(request, "path", None),
+            "username": str(username)[:150],
+            "client_ip": request.META.get("REMOTE_ADDR") if request else None,
+            "request_id": get_request_id(),
+        },
+    )
 
 
 def _mark_mfa_verified(request) -> None:
@@ -101,11 +128,13 @@ class LoginView(APIView):
             # right password; distinguish that so the owner knows why.
             disabled = User.objects.filter(username=username, is_active=False).first()
             if disabled is not None and disabled.check_password(password):
+                _log_auth_failure(request, username, "account_disabled")
                 raise APIError(
                     "This account has been disabled. Contact the owner.",
                     code="account_disabled",
                     status_code=status.HTTP_403_FORBIDDEN,
                 )
+            _log_auth_failure(request, username, "invalid_credentials")
             raise APIError(
                 "Incorrect username or password.",
                 code="invalid_credentials",

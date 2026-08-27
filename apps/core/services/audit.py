@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import datetime
 import uuid
+from decimal import Decimal
 
 from apps.core.models import AuditLog
 from apps.core.request_context import get_request_id
@@ -13,6 +15,28 @@ def _as_uuid(value) -> uuid.UUID | None:
         return uuid.UUID(str(value))
     except (ValueError, TypeError, AttributeError):
         return None
+
+
+def _json_safe(value):
+    """Coerce a ``before`` / ``after`` snapshot to JSON-native types.
+
+    Serializer ``.data`` legitimately contains ``UUID`` (related pks),
+    ``Decimal`` (money) and date/datetime values; the ``AuditLog`` JSONField
+    cannot store those directly. Convert them rather than let a normal write
+    raise a 500.
+    """
+
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, (uuid.UUID, Decimal)):
+        return str(value)
+    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+        return value.isoformat()
+    return str(value)
 
 
 def record_audit(
@@ -57,6 +81,6 @@ def record_audit(
         actor=actor,
         branch=branch,
         request_id=_as_uuid(request_id),
-        before=before or {},
-        after=after or {},
+        before=_json_safe(before or {}),
+        after=_json_safe(after or {}),
     )

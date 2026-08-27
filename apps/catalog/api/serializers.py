@@ -5,23 +5,27 @@ from rest_framework import serializers
 
 from apps.catalog.models import Brand, Category, PriceHistory, Product, ProductVariant
 from apps.catalog.selectors import current_price
+from apps.core.serializers import (
+    ControlCharSafeModelSerializer,
+    ControlCharSafeSerializer,
+)
 
 
-class CategorySerializer(serializers.ModelSerializer):
+class CategorySerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = Category
         fields = ["id", "name", "is_active", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
-class BrandSerializer(serializers.ModelSerializer):
+class BrandSerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = Brand
         fields = ["id", "name", "is_active", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
-class ProductVariantWriteSerializer(serializers.ModelSerializer):
+class ProductVariantWriteSerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = ProductVariant
         fields = [
@@ -44,7 +48,7 @@ class ProductVariantWriteSerializer(serializers.ModelSerializer):
         return product
 
 
-class PriceHistorySerializer(serializers.ModelSerializer):
+class PriceHistorySerializer(ControlCharSafeModelSerializer):
     changed_by_username = serializers.CharField(
         source="changed_by.username", read_only=True
     )
@@ -63,7 +67,7 @@ class PriceHistorySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class ProductVariantReadSerializer(serializers.ModelSerializer):
+class ProductVariantReadSerializer(ControlCharSafeModelSerializer):
     description = serializers.CharField(read_only=True)
     price = serializers.SerializerMethodField()
 
@@ -90,7 +94,7 @@ class ProductVariantReadSerializer(serializers.ModelSerializer):
         return str(row.amount) if row else None
 
 
-class ProductWriteSerializer(serializers.ModelSerializer):
+class ProductWriteSerializer(ControlCharSafeModelSerializer):
     class Meta:
         model = Product
         fields = [
@@ -121,7 +125,7 @@ class ProductWriteSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ProductReadSerializer(serializers.ModelSerializer):
+class ProductReadSerializer(ControlCharSafeModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True)
     brand_name = serializers.CharField(
         source="brand.name", read_only=True, default=None
@@ -148,7 +152,7 @@ class ProductReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class SetPriceSerializer(serializers.Serializer):
+class SetPriceSerializer(ControlCharSafeSerializer):
     amount = serializers.DecimalField(
         max_digits=14, decimal_places=2, min_value=Decimal("0.01")
     )

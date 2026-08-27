@@ -143,6 +143,10 @@ else:
 # API docs / schema: open in dev, gated to owner+tech-admin or disabled in prod.
 API_DOCS_ENABLED = env.bool("API_DOCS_ENABLED", default=True)
 
+# The Django admin is a development convenience. It is routed only when this is
+# true; production.py sets it False so /admin/ 404s. There is no alternate URL.
+ADMIN_ENABLED = env.bool("DJANGO_ADMIN_ENABLED", default=True)
+
 # --------------------------------------------------------------------------- #
 # Authentication                                                              #
 # --------------------------------------------------------------------------- #
@@ -262,10 +266,17 @@ REST_FRAMEWORK = {
         "rest_framework.filters.OrderingFilter",
     ],
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
+    # A global baseline for every endpoint (anon by IP, authenticated by user),
+    # plus per-view ScopedRateThrottle for high-risk operations. Health probes
+    # set throttle_classes = [] so infrastructure can poll them freely.
     "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
         "rest_framework.throttling.ScopedRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
+        "anon": env("THROTTLE_ANON", default="120/min"),
+        "user": env("THROTTLE_USER", default="2000/min"),
         "auth_login": env("THROTTLE_AUTH_LOGIN", default="10/min"),
         "auth_mfa": env("THROTTLE_AUTH_MFA", default="10/min"),
         "auth_recovery": env("THROTTLE_AUTH_RECOVERY", default="5/min"),
