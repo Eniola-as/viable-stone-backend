@@ -1,0 +1,346 @@
+"""
+Base Django settings for the Viable Stone paint-shop backend.
+
+Environment-specific overrides live in ``development.py``, ``test.py`` and
+``production.py``. Secrets are read from ``.env`` via ``django-environ`` and are
+never committed.
+"""
+
+from pathlib import Path
+
+import environ
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+env = environ.Env()
+environ.Env.read_env(BASE_DIR / ".env")
+
+# --------------------------------------------------------------------------- #
+# Core                                                                        #
+# --------------------------------------------------------------------------- #
+
+SECRET_KEY = env("SECRET_KEY")
+
+# Overridden per environment; base default is the safe (production) value.
+DEBUG = False
+
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
+
+# --------------------------------------------------------------------------- #
+# Applications                                                                #
+# --------------------------------------------------------------------------- #
+
+DJANGO_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+]
+
+THIRD_PARTY_APPS = [
+    "rest_framework",
+    "drf_spectacular",
+    "corsheaders",
+    "django_otp",
+    "django_otp.plugins.otp_totp",
+    "axes",
+]
+
+LOCAL_APPS = [
+    "apps.core",
+    "apps.accounts",
+    "apps.catalog",
+    "apps.inventory",
+    "apps.sales",
+    "apps.finance",
+    "apps.notifications",
+]
+
+INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "apps.core.middleware.RequestIDMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "apps.core.middleware.ActivityTrackingMiddleware",
+    "axes.middleware.AxesMiddleware",
+]
+
+ROOT_URLCONF = "config.urls"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = "config.wsgi.application"
+ASGI_APPLICATION = "config.asgi.application"
+
+# --------------------------------------------------------------------------- #
+# Database                                                                    #
+# --------------------------------------------------------------------------- #
+
+DATABASES = {
+    "default": {
+        **env.db("DATABASE_URL"),
+        "ATOMIC_REQUESTS": False,
+        "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=60),
+    }
+}
+
+# --------------------------------------------------------------------------- #
+# Cache / Redis                                                               #
+# --------------------------------------------------------------------------- #
+# Redis backs throttling, login counters and short-lived locks in production.
+# Local development and tests fall back to in-process memory so the stack runs
+# without a Redis server. Set CACHE_BACKEND=redis to opt in.
+
+REDIS_URL = env("REDIS_URL", default="redis://127.0.0.1:6379/0")
+CACHE_BACKEND = env("CACHE_BACKEND", default="locmem")
+
+if CACHE_BACKEND == "redis":
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "viable-stone",
+        }
+    }
+
+# --------------------------------------------------------------------------- #
+# Authentication                                                              #
+# --------------------------------------------------------------------------- #
+
+AUTH_USER_MODEL = "accounts.User"
+
+AUTHENTICATION_BACKENDS = [
+    # AxesStandaloneBackend must be first so lockouts are enforced.
+    "axes.backends.AxesStandaloneBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+
+_PW = "django.contrib.auth.password_validation"
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": f"{_PW}.UserAttributeSimilarityValidator"},
+    {"NAME": f"{_PW}.MinimumLengthValidator", "OPTIONS": {"min_length": 10}},
+    {"NAME": f"{_PW}.CommonPasswordValidator"},
+    {"NAME": f"{_PW}.NumericPasswordValidator"},
+]
+
+LOGIN_URL = "/api/v1/auth/login/"
+
+# --------------------------------------------------------------------------- #
+# django-axes (brute-force protection)                                        #
+# --------------------------------------------------------------------------- #
+
+AXES_ENABLED = env.bool("AXES_ENABLED", default=True)
+AXES_FAILURE_LIMIT = env.int("AXES_FAILURE_LIMIT", default=5)
+AXES_COOLOFF_TIME = env.float("AXES_COOLOFF_HOURS", default=0.25)  # 15 minutes
+AXES_RESET_ON_SUCCESS = True
+AXES_LOCKOUT_PARAMETERS = ["ip_address", "username"]
+AXES_CACHE = "default"
+AXES_DISABLE_ACCESS_LOG = False
+AXES_LOCKOUT_CALLABLE = "apps.accounts.auth.lockout_response"
+
+# --------------------------------------------------------------------------- #
+# Internationalisation                                                        #
+# --------------------------------------------------------------------------- #
+
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "Africa/Lagos"
+USE_I18N = True
+USE_TZ = True
+
+# --------------------------------------------------------------------------- #
+# Static & media                                                              #
+# --------------------------------------------------------------------------- #
+
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Uploaded files (product images, expense receipts, supplier invoices) are
+# private: stored outside the static tree and served only through an
+# authenticated, branch-scoped download view.
+PRIVATE_MEDIA_ROOT = env.path("PRIVATE_MEDIA_ROOT", default=BASE_DIR / "private-media")
+MEDIA_URL = "/api/v1/files/"
+MEDIA_ROOT = PRIVATE_MEDIA_ROOT
+
+STORAGES = {
+    "default": {"BACKEND": "apps.core.storage.PrivateMediaStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+    },
+}
+
+# Upload hard limits (bytes). Individual serializers narrow this further.
+MAX_UPLOAD_SIZE = env.int("MAX_UPLOAD_SIZE", default=5 * 1024 * 1024)
+DATA_UPLOAD_MAX_MEMORY_SIZE = env.int(
+    "DATA_UPLOAD_MAX_MEMORY_SIZE", default=6 * 1024 * 1024
+)
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 2000
+ALLOWED_UPLOAD_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "pdf"]
+ALLOWED_UPLOAD_MIME_TYPES = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/pdf",
+]
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --------------------------------------------------------------------------- #
+# CORS / CSRF                                                                 #
+# --------------------------------------------------------------------------- #
+
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_NAME = "vs_sessionid"
+CSRF_COOKIE_NAME = "vs_csrftoken"
+# The SPA must read the CSRF token from the cookie, so it is not HttpOnly.
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_USE_SESSIONS = False
+SESSION_COOKIE_AGE = env.int("SESSION_COOKIE_AGE", default=60 * 60 * 12)
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+
+# --------------------------------------------------------------------------- #
+# Django REST Framework                                                       #
+# --------------------------------------------------------------------------- #
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "apps.core.authentication.CSRFSessionAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "apps.core.permissions.IsAuthenticatedAndMFAVerified",
+    ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.DefaultPagination",
+    "PAGE_SIZE": 25,
+    "DEFAULT_FILTER_BACKENDS": [
+        "rest_framework.filters.SearchFilter",
+        "rest_framework.filters.OrderingFilter",
+    ],
+    "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "auth_login": env("THROTTLE_AUTH_LOGIN", default="10/min"),
+        "auth_mfa": env("THROTTLE_AUTH_MFA", default="10/min"),
+        "auth_recovery": env("THROTTLE_AUTH_RECOVERY", default="5/min"),
+        "sales_write": env("THROTTLE_SALES_WRITE", default="120/min"),
+        "offline_sync": env("THROTTLE_OFFLINE_SYNC", default="60/min"),
+    },
+    "TEST_REQUEST_DEFAULT_FORMAT": "json",
+    "COERCE_DECIMAL_TO_STRING": True,
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Viable Stone Paint Shop API",
+    "DESCRIPTION": (
+        "Internal management API for the Viable Stone paint and painting-"
+        "equipment shop. Source of truth for authentication, prices, stock, "
+        "sales, payments, receipts, expenses, approvals and reports."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": "/api/v1",
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": True,
+    "ENUM_NAME_OVERRIDES": {},
+    "SERVERS": [{"url": "/", "description": "Current host"}],
+}
+
+# --------------------------------------------------------------------------- #
+# Security defaults (production tightens these further)                        #
+# --------------------------------------------------------------------------- #
+
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# --------------------------------------------------------------------------- #
+# Sentry (enabled only when SENTRY_DSN is provided)                           #
+# --------------------------------------------------------------------------- #
+
+SENTRY_DSN = env("SENTRY_DSN", default="")
+
+# --------------------------------------------------------------------------- #
+# Logging — request-id aware, never logs secrets or full phone numbers        #
+# --------------------------------------------------------------------------- #
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "request_id": {"()": "apps.core.logging.RequestIDFilter"},
+    },
+    "formatters": {
+        "standard": {
+            "format": (
+                "%(asctime)s %(levelname)s %(name)s [req:%(request_id)s] %(message)s"
+            ),
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "filters": ["request_id"],
+            "formatter": "standard",
+        },
+    },
+    "root": {"handlers": ["console"], "level": env("LOG_LEVEL", default="INFO")},
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "apps": {
+            "handlers": ["console"],
+            "level": env("APP_LOG_LEVEL", default="INFO"),
+            "propagate": False,
+        },
+    },
+}
+
+# --------------------------------------------------------------------------- #
+# Business constants                                                          #
+# --------------------------------------------------------------------------- #
+
+CURRENCY_CODE = "NGN"
+MONEY_DECIMAL_PLACES = 2
+OFFLINE_AUTHORIZATION_MAX_HOURS = 24

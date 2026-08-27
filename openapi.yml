@@ -1,0 +1,4025 @@
+openapi: 3.0.3
+info:
+  title: Viable Stone Paint Shop API
+  version: 1.0.0
+  description: Internal management API for the Viable Stone paint and painting-equipment
+    shop. Source of truth for authentication, prices, stock, sales, payments, receipts,
+    expenses, approvals and reports.
+paths:
+  /api/v1/audit-logs/:
+    get:
+      operationId: audit_logs_list
+      summary: List audit history
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Audit
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAuditLogList'
+          description: ''
+  /api/v1/audit-logs/{id}/:
+    get:
+      operationId: audit_logs_retrieve
+      summary: Retrieve one audit entry
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this audit log.
+        required: true
+      tags:
+      - Audit
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLog'
+          description: ''
+  /api/v1/auth/csrf/:
+    get:
+      operationId: auth_csrf_retrieve
+      description: Bootstrap the CSRF cookie for the SPA before its first write request.
+      summary: Set the CSRF cookie
+      tags:
+      - Auth
+      responses:
+        '204':
+          description: No response body
+  /api/v1/auth/login/:
+    post:
+      operationId: auth_login_create
+      summary: Sign in with username and password
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: ''
+  /api/v1/auth/logout/:
+    post:
+      operationId: auth_logout_create
+      summary: Sign out
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/auth/me/:
+    get:
+      operationId: auth_me_retrieve
+      summary: The signed-in user's profile
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSelf'
+          description: ''
+  /api/v1/auth/mfa/recovery/:
+    post:
+      operationId: auth_mfa_recovery_create
+      summary: Clear MFA using a one-use recovery code
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecoveryCodeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RecoveryCodeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RecoveryCodeRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: ''
+  /api/v1/auth/mfa/recovery-codes/regenerate/:
+    post:
+      operationId: auth_mfa_recovery_codes_regenerate_create
+      summary: Replace the current recovery codes with a fresh set
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryCodesResponse'
+          description: ''
+  /api/v1/auth/mfa/setup/:
+    post:
+      operationId: auth_mfa_setup_create
+      summary: Begin authenticator (TOTP) enrolment
+      tags:
+      - Auth
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MFASetupResponse'
+          description: ''
+  /api/v1/auth/mfa/setup/confirm/:
+    post:
+      operationId: auth_mfa_setup_confirm_create
+      summary: Confirm authenticator enrolment and receive recovery codes
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryCodesResponse'
+          description: ''
+  /api/v1/auth/mfa/verify/:
+    post:
+      operationId: auth_mfa_verify_create
+      summary: Verify an authenticator code to clear MFA for this session
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: ''
+  /api/v1/auth/password/change/:
+    post:
+      operationId: auth_password_change_create
+      summary: Change the current user's password
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: ''
+  /api/v1/branches/:
+    get:
+      operationId: branches_list
+      summary: List branches
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Branches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBranchList'
+          description: ''
+    post:
+      operationId: branches_create
+      summary: Create a branch (owner)
+      tags:
+      - Branches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+          description: ''
+  /api/v1/branches/{id}/:
+    get:
+      operationId: branches_retrieve
+      summary: Retrieve a branch
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this branch.
+        required: true
+      tags:
+      - Branches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+          description: ''
+    put:
+      operationId: branches_update
+      summary: Update a branch (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this branch.
+        required: true
+      tags:
+      - Branches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+          description: ''
+    patch:
+      operationId: branches_partial_update
+      summary: Patch a branch (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this branch.
+        required: true
+      tags:
+      - Branches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBranchRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBranchRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBranchRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+          description: ''
+  /api/v1/brands/:
+    get:
+      operationId: brands_list
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      summary: List brands
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Catalogue
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBrandList'
+          description: ''
+    post:
+      operationId: brands_create
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      summary: Create a brand (owner)
+      tags:
+      - Catalogue
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrandRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BrandRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BrandRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+          description: ''
+  /api/v1/brands/{id}/:
+    get:
+      operationId: brands_retrieve
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this brand.
+        required: true
+      tags:
+      - brands
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+          description: ''
+    put:
+      operationId: brands_update
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this brand.
+        required: true
+      tags:
+      - brands
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrandRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BrandRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BrandRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+          description: ''
+    patch:
+      operationId: brands_partial_update
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this brand.
+        required: true
+      tags:
+      - brands
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBrandRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBrandRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBrandRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+          description: ''
+  /api/v1/categories/:
+    get:
+      operationId: categories_list
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      summary: List categories
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Catalogue
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCategoryList'
+          description: ''
+    post:
+      operationId: categories_create
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      summary: Create a category (owner)
+      tags:
+      - Catalogue
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+          description: ''
+  /api/v1/categories/{id}/:
+    get:
+      operationId: categories_retrieve
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this category.
+        required: true
+      tags:
+      - categories
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+          description: ''
+    put:
+      operationId: categories_update
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this category.
+        required: true
+      tags:
+      - categories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+          description: ''
+    patch:
+      operationId: categories_partial_update
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this category.
+        required: true
+      tags:
+      - categories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCategoryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCategoryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCategoryRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+          description: ''
+  /api/v1/health/:
+    get:
+      operationId: health_retrieve
+      description: Liveness/readiness probe. Public; never leaks configuration.
+      tags:
+      - health
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+          description: ''
+  /api/v1/inventory/:
+    get:
+      operationId: inventory_list
+      description: Branch stock. Cashiers see quantity + price; owner also sees cost.
+      summary: Current stock balances
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Inventory
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedInventoryBalanceEmployeeList'
+          description: ''
+  /api/v1/inventory/low-stock/:
+    get:
+      operationId: inventory_low_stock_retrieve
+      description: Branch stock. Cashiers see quantity + price; owner also sees cost.
+      summary: Low-stock balances
+      tags:
+      - Inventory
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryBalanceEmployee'
+          description: ''
+  /api/v1/inventory/movements/:
+    get:
+      operationId: inventory_movements_retrieve
+      description: Branch stock. Cashiers see quantity + price; owner also sees cost.
+      summary: Stock-movement ledger for one variant (owner)
+      tags:
+      - Inventory
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryBalanceEmployee'
+          description: ''
+  /api/v1/inventory/opening/:
+    post:
+      operationId: inventory_opening_create
+      description: Branch stock. Cashiers see quantity + price; owner also sees cost.
+      summary: Establish opening stock (owner, before any other movement)
+      tags:
+      - Inventory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpeningStockRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OpeningStockRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OpeningStockRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryBalanceOwner'
+          description: ''
+  /api/v1/inventory/stock-value/:
+    get:
+      operationId: inventory_stock_value_retrieve
+      description: Branch stock. Cashiers see quantity + price; owner also sees cost.
+      summary: Total stock value at cost (owner)
+      tags:
+      - Inventory
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryBalanceEmployee'
+          description: ''
+  /api/v1/products/:
+    get:
+      operationId: products_list
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      summary: Search products
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Catalogue
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProductReadList'
+          description: ''
+    post:
+      operationId: products_create
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      summary: Create a product (owner)
+      tags:
+      - Catalogue
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProductWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProductWriteRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductWrite'
+          description: ''
+  /api/v1/products/{id}/:
+    get:
+      operationId: products_retrieve
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      summary: Retrieve a product
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this product.
+        required: true
+      tags:
+      - Catalogue
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductRead'
+          description: ''
+    put:
+      operationId: products_update
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this product.
+        required: true
+      tags:
+      - products
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProductWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProductWriteRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductWrite'
+          description: ''
+    patch:
+      operationId: products_partial_update
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this product.
+        required: true
+      tags:
+      - products
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProductWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProductWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProductWriteRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductWrite'
+          description: ''
+  /api/v1/restocks/:
+    get:
+      operationId: restocks_list
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: List restocks (owner)
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Inventory
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRestockReadList'
+          description: ''
+    post:
+      operationId: restocks_create
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: Create a draft restock (owner)
+      tags:
+      - Inventory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestockWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RestockWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RestockWriteRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestockWrite'
+          description: ''
+  /api/v1/restocks/{id}/:
+    get:
+      operationId: restocks_retrieve
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: Retrieve a restock (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this restock.
+        required: true
+      tags:
+      - Inventory
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestockRead'
+          description: ''
+    put:
+      operationId: restocks_update
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this restock.
+        required: true
+      tags:
+      - restocks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestockWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RestockWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RestockWriteRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestockWrite'
+          description: ''
+    patch:
+      operationId: restocks_partial_update
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this restock.
+        required: true
+      tags:
+      - restocks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRestockWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRestockWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRestockWriteRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestockWrite'
+          description: ''
+    delete:
+      operationId: restocks_destroy
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this restock.
+        required: true
+      tags:
+      - restocks
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/restocks/{id}/confirm/:
+    post:
+      operationId: restocks_confirm_create
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: Confirm a restock — applies stock and weighted cost once
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this restock.
+        required: true
+      tags:
+      - Inventory
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestockRead'
+          description: ''
+  /api/v1/stock-counts/:
+    get:
+      operationId: stock_counts_list
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: List stock counts (owner)
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Inventory
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedStockCountReadList'
+          description: ''
+    post:
+      operationId: stock_counts_create
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: Create a draft stock count (owner)
+      tags:
+      - Inventory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StockCountWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/StockCountWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/StockCountWriteRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockCountWrite'
+          description: ''
+  /api/v1/stock-counts/{id}/:
+    get:
+      operationId: stock_counts_retrieve
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this stock count.
+        required: true
+      tags:
+      - stock-counts
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockCountRead'
+          description: ''
+  /api/v1/stock-counts/{id}/apply/:
+    post:
+      operationId: stock_counts_apply_create
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this stock count.
+        required: true
+      tags:
+      - Inventory
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockCountRead'
+          description: ''
+  /api/v1/stock-counts/{id}/submit/:
+    post:
+      operationId: stock_counts_submit_create
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this stock count.
+        required: true
+      tags:
+      - Inventory
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockCountRead'
+          description: ''
+  /api/v1/suppliers/:
+    get:
+      operationId: suppliers_list
+      description: Owner-only. Employees never receive supplier data. Deactivate,
+        don't delete.
+      summary: List suppliers (owner)
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Inventory
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSupplierList'
+          description: ''
+    post:
+      operationId: suppliers_create
+      description: Owner-only. Employees never receive supplier data. Deactivate,
+        don't delete.
+      summary: Create a supplier (owner)
+      tags:
+      - Inventory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupplierRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SupplierRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SupplierRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Supplier'
+          description: ''
+  /api/v1/suppliers/{id}/:
+    get:
+      operationId: suppliers_retrieve
+      description: Owner-only. Employees never receive supplier data. Deactivate,
+        don't delete.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this supplier.
+        required: true
+      tags:
+      - suppliers
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Supplier'
+          description: ''
+    put:
+      operationId: suppliers_update
+      description: Owner-only. Employees never receive supplier data. Deactivate,
+        don't delete.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this supplier.
+        required: true
+      tags:
+      - suppliers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupplierRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SupplierRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SupplierRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Supplier'
+          description: ''
+    patch:
+      operationId: suppliers_partial_update
+      description: Owner-only. Employees never receive supplier data. Deactivate,
+        don't delete.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this supplier.
+        required: true
+      tags:
+      - suppliers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSupplierRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedSupplierRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedSupplierRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Supplier'
+          description: ''
+  /api/v1/users/:
+    get:
+      operationId: users_list
+      description: |-
+        Owner-only staff management, scoped to the owner's branch.
+
+        Accounts are deactivated, never deleted.
+      summary: List staff accounts (owner)
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Users
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOwnerUserList'
+          description: ''
+    post:
+      operationId: users_create
+      description: |-
+        Owner-only staff management, scoped to the owner's branch.
+
+        Accounts are deactivated, never deleted.
+      summary: Create a staff account (owner)
+      tags:
+      - Users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OwnerUserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OwnerUserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OwnerUserRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerUser'
+          description: ''
+  /api/v1/users/{id}/:
+    get:
+      operationId: users_retrieve
+      description: |-
+        Owner-only staff management, scoped to the owner's branch.
+
+        Accounts are deactivated, never deleted.
+      summary: Retrieve a staff account (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this user.
+        required: true
+      tags:
+      - Users
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerUser'
+          description: ''
+    put:
+      operationId: users_update
+      description: |-
+        Owner-only staff management, scoped to the owner's branch.
+
+        Accounts are deactivated, never deleted.
+      summary: Update a staff account (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this user.
+        required: true
+      tags:
+      - Users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OwnerUserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OwnerUserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OwnerUserRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerUser'
+          description: ''
+    patch:
+      operationId: users_partial_update
+      description: |-
+        Owner-only staff management, scoped to the owner's branch.
+
+        Accounts are deactivated, never deleted.
+      summary: Patch a staff account (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this user.
+        required: true
+      tags:
+      - Users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedOwnerUserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedOwnerUserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedOwnerUserRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerUser'
+          description: ''
+  /api/v1/users/{id}/activate/:
+    post:
+      operationId: users_activate_create
+      description: |-
+        Owner-only staff management, scoped to the owner's branch.
+
+        Accounts are deactivated, never deleted.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this user.
+        required: true
+      tags:
+      - Users
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerUser'
+          description: ''
+  /api/v1/users/{id}/deactivate/:
+    post:
+      operationId: users_deactivate_create
+      description: |-
+        Owner-only staff management, scoped to the owner's branch.
+
+        Accounts are deactivated, never deleted.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this user.
+        required: true
+      tags:
+      - Users
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerUser'
+          description: ''
+  /api/v1/variants/:
+    get:
+      operationId: variants_list
+      description: Write an audit row after create/update/destroy on a viewset.
+      summary: Search variants (by SKU/barcode)
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Catalogue
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProductVariantReadList'
+          description: ''
+    post:
+      operationId: variants_create
+      description: Write an audit row after create/update/destroy on a viewset.
+      summary: Create a variant (owner)
+      tags:
+      - Catalogue
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductVariantWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProductVariantWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProductVariantWriteRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVariantWrite'
+          description: ''
+  /api/v1/variants/{id}/:
+    get:
+      operationId: variants_retrieve
+      description: Write an audit row after create/update/destroy on a viewset.
+      summary: Retrieve a variant
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this product variant.
+        required: true
+      tags:
+      - Catalogue
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVariantRead'
+          description: ''
+    put:
+      operationId: variants_update
+      description: Write an audit row after create/update/destroy on a viewset.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this product variant.
+        required: true
+      tags:
+      - variants
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductVariantWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProductVariantWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProductVariantWriteRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVariantWrite'
+          description: ''
+    patch:
+      operationId: variants_partial_update
+      description: Write an audit row after create/update/destroy on a viewset.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this product variant.
+        required: true
+      tags:
+      - variants
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProductVariantWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProductVariantWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProductVariantWriteRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVariantWrite'
+          description: ''
+  /api/v1/variants/{id}/current-price/:
+    get:
+      operationId: variants_current_price_retrieve
+      description: Write an audit row after create/update/destroy on a viewset.
+      summary: Current price for a variant
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this product variant.
+        required: true
+      tags:
+      - Catalogue
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceHistory'
+          description: ''
+  /api/v1/variants/{id}/price/:
+    post:
+      operationId: variants_price_create
+      description: Write an audit row after create/update/destroy on a viewset.
+      summary: Set the current selling price (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this product variant.
+        required: true
+      tags:
+      - Catalogue
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetPriceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SetPriceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SetPriceRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceHistory'
+          description: ''
+  /api/v1/variants/{id}/price-history/:
+    get:
+      operationId: variants_price_history_list
+      description: Write an audit row after create/update/destroy on a viewset.
+      summary: Price history for a variant (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this product variant.
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Catalogue
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPriceHistoryList'
+          description: ''
+components:
+  schemas:
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        action:
+          type: string
+          readOnly: true
+        target_type:
+          type: string
+          readOnly: true
+        target_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        actor:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        actor_username:
+          type: string
+          readOnly: true
+        branch:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        request_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        before:
+          readOnly: true
+        after:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - action
+      - actor
+      - actor_username
+      - after
+      - before
+      - branch
+      - created_at
+      - id
+      - request_id
+      - target_id
+      - target_type
+    Branch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        code:
+          type: string
+          maxLength: 10
+        name:
+          type: string
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 30
+        address:
+          type: string
+        timezone:
+          type: string
+          maxLength: 50
+        receipt_prefix:
+          type: string
+          maxLength: 20
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - code
+      - created_at
+      - id
+      - name
+      - updated_at
+    BranchRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 10
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 30
+        address:
+          type: string
+        timezone:
+          type: string
+          minLength: 1
+          maxLength: 50
+        receipt_prefix:
+          type: string
+          minLength: 1
+          maxLength: 20
+        is_active:
+          type: boolean
+      required:
+      - code
+      - name
+    Brand:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 100
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - updated_at
+    BrandRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        is_active:
+          type: boolean
+      required:
+      - name
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 100
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - updated_at
+    CategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        is_active:
+          type: boolean
+      required:
+      - name
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+        database:
+          type: string
+        cache:
+          type: string
+        time:
+          type: string
+          format: date-time
+      required:
+      - cache
+      - database
+      - status
+      - time
+    InventoryBalanceEmployee:
+      type: object
+      description: 'Cashier view: quantity + selling price, never cost.'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        variant:
+          type: string
+          format: uuid
+          readOnly: true
+        variant_sku:
+          type: string
+          readOnly: true
+        product_name:
+          type: string
+          readOnly: true
+        variant_description:
+          type: string
+          readOnly: true
+        quantity:
+          type: integer
+          readOnly: true
+        low_stock_level:
+          type: integer
+          readOnly: true
+        is_low:
+          type: boolean
+          readOnly: true
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
+          nullable: true
+          readOnly: true
+        last_restocked_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - id
+      - is_low
+      - last_restocked_at
+      - low_stock_level
+      - price
+      - product_name
+      - quantity
+      - variant
+      - variant_description
+      - variant_sku
+    InventoryBalanceOwner:
+      type: object
+      description: 'Owner view: adds weighted-average cost and stock value.'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        variant:
+          type: string
+          format: uuid
+          readOnly: true
+        variant_sku:
+          type: string
+          readOnly: true
+        product_name:
+          type: string
+          readOnly: true
+        variant_description:
+          type: string
+          readOnly: true
+        quantity:
+          type: integer
+          readOnly: true
+        average_unit_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        stock_value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
+          nullable: true
+          readOnly: true
+        low_stock_level:
+          type: integer
+          readOnly: true
+        is_low:
+          type: boolean
+          readOnly: true
+        last_restocked_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - average_unit_cost
+      - id
+      - is_low
+      - last_restocked_at
+      - low_stock_level
+      - product_name
+      - quantity
+      - stock_value
+      - updated_at
+      - variant
+      - variant_description
+      - variant_sku
+    KindEnum:
+      enum:
+      - PAINT
+      - EQUIPMENT
+      type: string
+      description: |-
+        * `PAINT` - Paint
+        * `EQUIPMENT` - Painting equipment
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          writeOnly: true
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - password
+      - username
+    LoginResponse:
+      type: object
+      properties:
+        mfa_required:
+          type: boolean
+          readOnly: true
+        mfa_enrolled:
+          type: boolean
+          readOnly: true
+        mfa_verified:
+          type: boolean
+          readOnly: true
+        must_change_password:
+          type: boolean
+          readOnly: true
+        user:
+          allOf:
+          - $ref: '#/components/schemas/UserSelf'
+          readOnly: true
+          nullable: true
+      required:
+      - mfa_enrolled
+      - mfa_required
+      - mfa_verified
+      - must_change_password
+      - user
+    MFASetupResponse:
+      type: object
+      properties:
+        secret:
+          type: string
+          readOnly: true
+        otpauth_url:
+          type: string
+          readOnly: true
+      required:
+      - otpauth_url
+      - secret
+    OpeningStockRequest:
+      type: object
+      properties:
+        variant:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+        unit_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+      required:
+      - quantity
+      - unit_cost
+      - variant
+    OwnerUser:
+      type: object
+      description: Owner-facing user management. Password is write-only; never echoed.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        username:
+          type: string
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        email:
+          title: Email address
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
+        phone:
+          type: string
+          maxLength: 30
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+        is_active:
+          type: boolean
+          title: Active
+          description: Designates whether this user should be treated as active. Unselect
+            this instead of deleting accounts.
+        must_change_password:
+          type: boolean
+          readOnly: true
+        mfa_required:
+          type: boolean
+          readOnly: true
+        last_activity_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        date_joined:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - date_joined
+      - id
+      - last_activity_at
+      - mfa_required
+      - must_change_password
+      - username
+    OwnerUserRequest:
+      type: object
+      description: Owner-facing user management. Password is write-only; never echoed.
+      properties:
+        username:
+          type: string
+          minLength: 1
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        email:
+          title: Email address
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
+        phone:
+          type: string
+          maxLength: 30
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+        is_active:
+          type: boolean
+          title: Active
+          description: Designates whether this user should be treated as active. Unselect
+            this instead of deleting accounts.
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - username
+    PaginatedAuditLogList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLog'
+    PaginatedBranchList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Branch'
+    PaginatedBrandList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Brand'
+    PaginatedCategoryList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+    PaginatedInventoryBalanceEmployeeList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryBalanceEmployee'
+    PaginatedOwnerUserList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/OwnerUser'
+    PaginatedPriceHistoryList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PriceHistory'
+    PaginatedProductReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductRead'
+    PaginatedProductVariantReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductVariantRead'
+    PaginatedRestockReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestockRead'
+    PaginatedStockCountReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockCountRead'
+    PaginatedSupplierList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Supplier'
+    PasswordChangeRequest:
+      type: object
+      properties:
+        current_password:
+          type: string
+          writeOnly: true
+          minLength: 1
+        new_password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - current_password
+      - new_password
+    PatchedBranchRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 10
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 30
+        address:
+          type: string
+        timezone:
+          type: string
+          minLength: 1
+          maxLength: 50
+        receipt_prefix:
+          type: string
+          minLength: 1
+          maxLength: 20
+        is_active:
+          type: boolean
+    PatchedBrandRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        is_active:
+          type: boolean
+    PatchedCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        is_active:
+          type: boolean
+    PatchedOwnerUserRequest:
+      type: object
+      description: Owner-facing user management. Password is write-only; never echoed.
+      properties:
+        username:
+          type: string
+          minLength: 1
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        email:
+          title: Email address
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
+        phone:
+          type: string
+          maxLength: 30
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+        is_active:
+          type: boolean
+          title: Active
+          description: Designates whether this user should be treated as active. Unselect
+            this instead of deleting accounts.
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+    PatchedProductVariantWriteRequest:
+      type: object
+      properties:
+        product:
+          type: string
+          format: uuid
+        colour:
+          type: string
+          maxLength: 100
+        size:
+          type: string
+          maxLength: 100
+        finish:
+          type: string
+          maxLength: 100
+        sku:
+          type: string
+          minLength: 1
+          maxLength: 60
+        barcode:
+          type: string
+          nullable: true
+          maxLength: 100
+        low_stock_level:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        is_active:
+          type: boolean
+    PatchedProductWriteRequest:
+      type: object
+      properties:
+        category:
+          type: string
+          format: uuid
+        brand:
+          type: string
+          format: uuid
+          nullable: true
+        kind:
+          $ref: '#/components/schemas/KindEnum'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 180
+        description:
+          type: string
+        image:
+          type: string
+          format: binary
+        is_active:
+          type: boolean
+    PatchedRestockWriteRequest:
+      type: object
+      properties:
+        supplier:
+          type: string
+          format: uuid
+        supplier_invoice_number:
+          type: string
+          maxLength: 100
+        invoice_file:
+          type: string
+          format: binary
+        date:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestockItemWriteRequest'
+          writeOnly: true
+    PatchedSupplierRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 180
+        contact_name:
+          type: string
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 30
+        email:
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
+        address:
+          type: string
+        notes:
+          type: string
+        is_active:
+          type: boolean
+    PriceHistory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        valid_from:
+          type: string
+          format: date-time
+          readOnly: true
+        valid_to:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        changed_by:
+          type: string
+          format: uuid
+          readOnly: true
+        changed_by_username:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount
+      - changed_by
+      - changed_by_username
+      - created_at
+      - id
+      - valid_from
+      - valid_to
+    ProductRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        category:
+          type: string
+          format: uuid
+          readOnly: true
+        category_name:
+          type: string
+          readOnly: true
+        brand:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        brand_name:
+          type: string
+          readOnly: true
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/KindEnum'
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        image:
+          type: string
+          format: uri
+          nullable: true
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductVariantRead'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - brand
+      - brand_name
+      - category
+      - category_name
+      - created_at
+      - description
+      - id
+      - image
+      - is_active
+      - kind
+      - name
+      - updated_at
+      - variants
+    ProductVariantRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        product:
+          type: string
+          format: uuid
+          readOnly: true
+        colour:
+          type: string
+          readOnly: true
+        size:
+          type: string
+          readOnly: true
+        finish:
+          type: string
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        sku:
+          type: string
+          readOnly: true
+        barcode:
+          type: string
+          readOnly: true
+          nullable: true
+        low_stock_level:
+          type: integer
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+      required:
+      - barcode
+      - colour
+      - description
+      - finish
+      - id
+      - is_active
+      - low_stock_level
+      - price
+      - product
+      - size
+      - sku
+    ProductVariantWrite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        product:
+          type: string
+          format: uuid
+        colour:
+          type: string
+          maxLength: 100
+        size:
+          type: string
+          maxLength: 100
+        finish:
+          type: string
+          maxLength: 100
+        sku:
+          type: string
+          maxLength: 60
+        barcode:
+          type: string
+          nullable: true
+          maxLength: 100
+        low_stock_level:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        is_active:
+          type: boolean
+      required:
+      - id
+      - product
+      - sku
+    ProductVariantWriteRequest:
+      type: object
+      properties:
+        product:
+          type: string
+          format: uuid
+        colour:
+          type: string
+          maxLength: 100
+        size:
+          type: string
+          maxLength: 100
+        finish:
+          type: string
+          maxLength: 100
+        sku:
+          type: string
+          minLength: 1
+          maxLength: 60
+        barcode:
+          type: string
+          nullable: true
+          maxLength: 100
+        low_stock_level:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        is_active:
+          type: boolean
+      required:
+      - product
+      - sku
+    ProductWrite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        category:
+          type: string
+          format: uuid
+        brand:
+          type: string
+          format: uuid
+          nullable: true
+        kind:
+          $ref: '#/components/schemas/KindEnum'
+        name:
+          type: string
+          maxLength: 180
+        description:
+          type: string
+        image:
+          type: string
+          format: uri
+          nullable: true
+        is_active:
+          type: boolean
+      required:
+      - category
+      - id
+      - kind
+      - name
+    ProductWriteRequest:
+      type: object
+      properties:
+        category:
+          type: string
+          format: uuid
+        brand:
+          type: string
+          format: uuid
+          nullable: true
+        kind:
+          $ref: '#/components/schemas/KindEnum'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 180
+        description:
+          type: string
+        image:
+          type: string
+          format: binary
+        is_active:
+          type: boolean
+      required:
+      - category
+      - kind
+      - name
+    RecoveryCodeRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - code
+    RecoveryCodesResponse:
+      type: object
+      properties:
+        recovery_codes:
+          type: array
+          items:
+            type: string
+          readOnly: true
+      required:
+      - recovery_codes
+    RestockItemRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        variant:
+          type: string
+          format: uuid
+          readOnly: true
+        variant_sku:
+          type: string
+          readOnly: true
+        quantity:
+          type: integer
+          readOnly: true
+        unit_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        line_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+      required:
+      - id
+      - line_total
+      - quantity
+      - unit_cost
+      - variant
+      - variant_sku
+    RestockItemWrite:
+      type: object
+      properties:
+        variant:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+        unit_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+      required:
+      - quantity
+      - unit_cost
+      - variant
+    RestockItemWriteRequest:
+      type: object
+      properties:
+        variant:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+        unit_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+      required:
+      - quantity
+      - unit_cost
+      - variant
+    RestockRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        supplier:
+          type: string
+          format: uuid
+          readOnly: true
+        supplier_name:
+          type: string
+          readOnly: true
+        supplier_invoice_number:
+          type: string
+          readOnly: true
+        invoice_file:
+          type: string
+          format: uri
+          nullable: true
+          readOnly: true
+        date:
+          type: string
+          format: date
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/RestockReadStatusEnum'
+          readOnly: true
+        total_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+        confirmed_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        confirmed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestockItemRead'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - confirmed_at
+      - confirmed_by
+      - created_at
+      - created_by
+      - date
+      - id
+      - invoice_file
+      - items
+      - status
+      - supplier
+      - supplier_invoice_number
+      - supplier_name
+      - total_cost
+      - updated_at
+    RestockReadStatusEnum:
+      enum:
+      - DRAFT
+      - CONFIRMED
+      type: string
+      description: |-
+        * `DRAFT` - Draft
+        * `CONFIRMED` - Confirmed
+    RestockWrite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        supplier:
+          type: string
+          format: uuid
+        supplier_invoice_number:
+          type: string
+          maxLength: 100
+        invoice_file:
+          type: string
+          format: uri
+          nullable: true
+        date:
+          type: string
+          format: date
+      required:
+      - date
+      - id
+      - supplier
+    RestockWriteRequest:
+      type: object
+      properties:
+        supplier:
+          type: string
+          format: uuid
+        supplier_invoice_number:
+          type: string
+          maxLength: 100
+        invoice_file:
+          type: string
+          format: binary
+        date:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestockItemWriteRequest'
+          writeOnly: true
+      required:
+      - date
+      - items
+      - supplier
+    RoleEnum:
+      enum:
+      - TECH_ADMIN
+      - OWNER
+      - EMPLOYEE
+      type: string
+      description: |-
+        * `TECH_ADMIN` - Technical administrator
+        * `OWNER` - Owner
+        * `EMPLOYEE` - Employee
+    SetPriceRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+      required:
+      - amount
+    StockCountItemRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        variant:
+          type: string
+          format: uuid
+          readOnly: true
+        variant_sku:
+          type: string
+          readOnly: true
+        system_quantity_snapshot:
+          type: integer
+          readOnly: true
+        counted_quantity:
+          type: integer
+          readOnly: true
+        variance:
+          type: integer
+          readOnly: true
+      required:
+      - counted_quantity
+      - id
+      - system_quantity_snapshot
+      - variance
+      - variant
+      - variant_sku
+    StockCountItemWrite:
+      type: object
+      properties:
+        variant:
+          type: string
+          format: uuid
+        counted_quantity:
+          type: integer
+          minimum: 0
+      required:
+      - counted_quantity
+      - variant
+    StockCountItemWriteRequest:
+      type: object
+      properties:
+        variant:
+          type: string
+          format: uuid
+        counted_quantity:
+          type: integer
+          minimum: 0
+      required:
+      - counted_quantity
+      - variant
+    StockCountRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StockCountReadStatusEnum'
+          readOnly: true
+        reason:
+          type: string
+          readOnly: true
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+        submitted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        applied_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        applied_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockCountItemRead'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - applied_at
+      - applied_by
+      - created_at
+      - created_by
+      - id
+      - items
+      - reason
+      - status
+      - submitted_at
+      - updated_at
+    StockCountReadStatusEnum:
+      enum:
+      - DRAFT
+      - SUBMITTED
+      - APPLIED
+      - CANCELLED
+      type: string
+      description: |-
+        * `DRAFT` - Draft
+        * `SUBMITTED` - Submitted
+        * `APPLIED` - Applied
+        * `CANCELLED` - Cancelled
+    StockCountWrite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        reason:
+          type: string
+      required:
+      - id
+      - reason
+    StockCountWriteRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockCountItemWriteRequest'
+          writeOnly: true
+      required:
+      - items
+      - reason
+    Supplier:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 180
+        contact_name:
+          type: string
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 30
+        email:
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
+        address:
+          type: string
+        notes:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - updated_at
+    SupplierRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 180
+        contact_name:
+          type: string
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 30
+        email:
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
+        address:
+          type: string
+        notes:
+          type: string
+        is_active:
+          type: boolean
+      required:
+      - name
+    TokenRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - token
+    UserSelf:
+      type: object
+      description: The signed-in user's own safe profile. No cost/secret/audit fields.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+        first_name:
+          type: string
+          readOnly: true
+        last_name:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+          title: Email address
+        phone:
+          type: string
+          readOnly: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          readOnly: true
+        branch:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        branch_code:
+          type: string
+          readOnly: true
+        branch_name:
+          type: string
+          readOnly: true
+        must_change_password:
+          type: boolean
+          readOnly: true
+        mfa_required:
+          type: boolean
+          readOnly: true
+        last_login:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - branch
+      - branch_code
+      - branch_name
+      - email
+      - first_name
+      - id
+      - last_login
+      - last_name
+      - mfa_required
+      - must_change_password
+      - phone
+      - role
+      - username
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: vs_sessionid
+servers:
+- url: /
+  description: Current host

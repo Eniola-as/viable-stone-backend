@@ -1,0 +1,111 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "viable-stone-backend"
+version = "0.1.0"
+description = "Backend API for the Viable Stone paint shop management system"
+requires-python = ">=3.13,<3.14"
+
+dependencies = [
+    "Django>=5.2,<5.3",
+    "djangorestframework>=3.16,<3.17",
+    "psycopg[binary]>=3.2,<4",
+    "django-environ",
+    "django-cors-headers",
+    "drf-spectacular",
+    "django-redis",
+    "redis",
+    "django-otp",
+    "qrcode",
+    "Pillow",
+    "django-axes",
+    "pywebpush",
+    "gunicorn",
+    "whitenoise",
+    "sentry-sdk[django]",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-django",
+    "pytest-cov",
+    "factory-boy",
+    "freezegun",
+    "ruff",
+    "pip-audit",
+]
+
+[tool.setuptools.packages.find]
+include = ["apps*", "config*"]
+
+# --------------------------------------------------------------------------- #
+# Ruff                                                                        #
+# --------------------------------------------------------------------------- #
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+extend-exclude = [
+    "*/migrations/*",
+    ".venv",
+    "staticfiles",
+    "private-media",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "DJ", "A", "T20", "RUF"]
+ignore = [
+    "DJ001",   # null=True on string field — deliberate for optional business fields
+    "RUF012",  # Django Meta.constraints/indexes & DRF attrs are conventionally plain lists
+]
+
+[tool.ruff.lint.per-file-ignores]
+"config/settings/*" = ["F403", "F405"]
+"config/settings/production.py" = ["F403", "F405", "E402"]
+"**/tests/**" = ["S101"]
+"**/conftest.py" = ["F403", "F405"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]
+
+# --------------------------------------------------------------------------- #
+# Pytest                                                                      #
+# --------------------------------------------------------------------------- #
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py", "tests.py"]
+addopts = "-q --strict-markers --reuse-db"
+testpaths = ["apps", "tests"]
+markers = [
+    "concurrency: tests that spawn real DB connections/threads",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:pywebpush.*",
+    # WhiteNoise warns once per test client that staticfiles/ is absent
+    # (no collectstatic in tests). Harmless.
+    "ignore:No directory at:UserWarning",
+]
+
+# --------------------------------------------------------------------------- #
+# Coverage                                                                    #
+# --------------------------------------------------------------------------- #
+[tool.coverage.run]
+source = ["apps"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/apps.py",
+    "*/admin.py",
+    "config/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
