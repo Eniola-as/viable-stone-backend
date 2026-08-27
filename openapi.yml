@@ -6,6 +6,138 @@ info:
     shop. Source of truth for authentication, prices, stock, sales, payments, receipts,
     expenses, approvals and reports.
 paths:
+  /api/v1/approvals/:
+    get:
+      operationId: approvals_list
+      summary: List approval requests
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Approvals
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedApprovalRequestList'
+          description: ''
+  /api/v1/approvals/{id}/:
+    get:
+      operationId: approvals_retrieve
+      summary: Retrieve an approval request
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this approval request.
+        required: true
+      tags:
+      - Approvals
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalRequest'
+          description: ''
+  /api/v1/approvals/{id}/approve/:
+    post:
+      operationId: approvals_approve_create
+      summary: Approve a return request (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this approval request.
+        required: true
+      tags:
+      - Approvals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveReturnRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ApproveReturnRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ApproveReturnRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaleReturnRead'
+          description: ''
+  /api/v1/approvals/{id}/reject/:
+    post:
+      operationId: approvals_reject_create
+      summary: Reject a return request (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this approval request.
+        required: true
+      tags:
+      - Approvals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectReturnRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RejectReturnRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RejectReturnRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalRequest'
+          description: ''
   /api/v1/audit-logs/:
     get:
       operationId: audit_logs_list
@@ -1381,6 +1513,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedInventoryBalanceEmployeeList'
           description: ''
+  /api/v1/inventory/adjustments/:
+    post:
+      operationId: inventory_adjustments_create
+      description: Branch stock. Cashiers see quantity + price; owner also sees cost.
+      summary: Protected stock adjustment (owner)
+      tags:
+      - Inventory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StockAdjustmentRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/StockAdjustmentRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/StockAdjustmentRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryBalanceOwner'
+          description: ''
   /api/v1/inventory/low-stock/:
     get:
       operationId: inventory_low_stock_retrieve
@@ -2039,6 +2199,69 @@ paths:
               schema:
                 $ref: '#/components/schemas/RestockRead'
           description: ''
+  /api/v1/returns/:
+    get:
+      operationId: returns_list
+      summary: List returns
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Sales
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSaleReturnReadList'
+          description: ''
+  /api/v1/returns/{id}/:
+    get:
+      operationId: returns_retrieve
+      summary: Retrieve a return
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this sale return.
+        required: true
+      tags:
+      - Sales
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaleReturnRead'
+          description: ''
   /api/v1/sales/:
     get:
       operationId: sales_list
@@ -2153,7 +2376,6 @@ paths:
   /api/v1/sales/{id}/receipt.pdf:
     get:
       operationId: sales_receipt.pdf_retrieve
-      summary: A4 paid-receipt PDF
       parameters:
       - in: path
         name: id
@@ -2162,7 +2384,42 @@ paths:
           format: uuid
         required: true
       tags:
+      - sales
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaleRead'
+          description: ''
+  /api/v1/sales/{id}/return-requests/:
+    post:
+      operationId: sales_return_requests_create
+      summary: A4 paid-receipt PDF
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this sale.
+        required: true
+      tags:
       - Sales
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReturnRequestCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ReturnRequestCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ReturnRequestCreateRequest'
+        required: true
       security:
       - cookieAuth: []
       responses:
@@ -3000,6 +3257,131 @@ paths:
           description: ''
 components:
   schemas:
+    ApprovalRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        request_type:
+          allOf:
+          - $ref: '#/components/schemas/RequestTypeEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ApprovalStatusEnum'
+          readOnly: true
+        sale:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        variant:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        stock_count:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        reason:
+          type: string
+          readOnly: true
+        requested_changes:
+          readOnly: true
+        requested_by:
+          type: string
+          format: uuid
+          readOnly: true
+        requested_by_username:
+          type: string
+          readOnly: true
+        reviewed_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        reviewer_note:
+          type: string
+          readOnly: true
+        reviewed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - reason
+      - request_type
+      - requested_by
+      - requested_by_username
+      - requested_changes
+      - reviewed_at
+      - reviewed_by
+      - reviewer_note
+      - sale
+      - status
+      - stock_count
+      - updated_at
+      - variant
+    ApprovalStatusEnum:
+      enum:
+      - PENDING
+      - APPROVED
+      - REJECTED
+      type: string
+      description: |-
+        * `PENDING` - Pending
+        * `APPROVED` - Approved
+        * `REJECTED` - Rejected
+    ApproveReturnRequest:
+      type: object
+      properties:
+        reviewer_note:
+          type: string
+          default: ''
+          maxLength: 2000
+        client_return_id:
+          type: string
+          format: uuid
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApprovedLineRequest'
+        refunds:
+          type: array
+          items:
+            $ref: '#/components/schemas/RefundLineRequest'
+      required:
+      - lines
+      - refunds
+    ApprovedLineRequest:
+      type: object
+      properties:
+        sale_item:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+        condition:
+          $ref: '#/components/schemas/ConditionEnum'
+      required:
+      - condition
+      - quantity
+      - sale_item
     AuditLog:
       type: object
       properties:
@@ -3219,6 +3601,14 @@ components:
           type: boolean
       required:
       - name
+    ConditionEnum:
+      enum:
+      - RESELLABLE
+      - DAMAGED_OR_OPENED
+      type: string
+      description: |-
+        * `RESELLABLE` - Resellable — restored to inventory
+        * `DAMAGED_OR_OPENED` - Damaged or opened — not restored
     Customer:
       type: object
       properties:
@@ -3285,6 +3675,14 @@ components:
         phone:
           type: string
           maxLength: 30
+    DirectionEnum:
+      enum:
+      - INCREASE
+      - DECREASE
+      type: string
+      description: |-
+        * `INCREASE` - INCREASE
+        * `DECREASE` - DECREASE
     Expense:
       type: object
       properties:
@@ -3628,6 +4026,16 @@ components:
       required:
       - otpauth_url
       - secret
+    MethodEnum:
+      enum:
+      - CASH
+      - TRANSFER
+      - POS
+      type: string
+      description: |-
+        * `CASH` - Cash
+        * `TRANSFER` - Bank transfer
+        * `POS` - POS / card
     OpeningStockRequest:
       type: object
       properties:
@@ -3754,6 +4162,36 @@ components:
           minLength: 1
       required:
       - username
+    PaginatedApprovalRequestList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApprovalRequest'
     PaginatedAuditLogList:
       type: object
       required:
@@ -4204,6 +4642,36 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SaleRead'
+    PaginatedSaleReturnReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SaleReturnRead'
     PaginatedSlowMoverList:
       type: object
       required:
@@ -4530,21 +4998,11 @@ components:
           type: string
         is_active:
           type: boolean
-    PaymentInputMethodEnum:
-      enum:
-      - CASH
-      - TRANSFER
-      - POS
-      type: string
-      description: |-
-        * `CASH` - CASH
-        * `TRANSFER` - TRANSFER
-        * `POS` - POS
     PaymentInputRequest:
       type: object
       properties:
         method:
-          $ref: '#/components/schemas/PaymentInputMethodEnum'
+          $ref: '#/components/schemas/MethodEnum'
         amount:
           type: string
           format: decimal
@@ -4570,7 +5028,7 @@ components:
           readOnly: true
         method:
           allOf:
-          - $ref: '#/components/schemas/PaymentReadMethodEnum'
+          - $ref: '#/components/schemas/MethodEnum'
           readOnly: true
         amount:
           type: string
@@ -4597,16 +5055,6 @@ components:
       - method
       - reference
       - tendered_amount
-    PaymentReadMethodEnum:
-      enum:
-      - CASH
-      - TRANSFER
-      - POS
-      type: string
-      description: |-
-        * `CASH` - Cash
-        * `TRANSFER` - Bank transfer
-        * `POS` - POS / card
     PriceHistory:
       type: object
       properties:
@@ -4919,6 +5367,14 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
+        returns_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
+        cost_reversed:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
         expenses_total:
           type: string
           format: decimal
@@ -4931,12 +5387,14 @@ components:
           type: integer
       required:
       - cogs
+      - cost_reversed
       - currency
       - end
       - expenses_total
       - gross_profit
       - net_profit
       - period
+      - returns_total
       - revenue
       - sales_count
       - start
@@ -5022,6 +5480,77 @@ components:
           readOnly: true
       required:
       - recovery_codes
+    RefundLineRequest:
+      type: object
+      properties:
+        method:
+          $ref: '#/components/schemas/MethodEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        reference:
+          type: string
+          default: ''
+          maxLength: 150
+      required:
+      - amount
+      - method
+    RefundRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        method:
+          allOf:
+          - $ref: '#/components/schemas/MethodEnum'
+          readOnly: true
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        reference:
+          type: string
+          readOnly: true
+        issued_by:
+          type: string
+          format: uuid
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount
+      - created_at
+      - id
+      - issued_by
+      - method
+      - reference
+    RejectReturnRequest:
+      type: object
+      properties:
+        reviewer_note:
+          type: string
+          default: ''
+          maxLength: 2000
+    RequestTypeEnum:
+      enum:
+      - DISCOUNT
+      - RETURN
+      - CORRECTION
+      - STOCK_ADJUSTMENT
+      - DAMAGE
+      type: string
+      description: |-
+        * `DISCOUNT` - Discount
+        * `RETURN` - Return
+        * `CORRECTION` - Correction
+        * `STOCK_ADJUSTMENT` - Stock adjustment
+        * `DAMAGE` - Damage
     RestockItemRead:
       type: object
       properties:
@@ -5223,6 +5752,36 @@ components:
       - date
       - items
       - supplier
+    ReturnRequestCreateRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        client_return_id:
+          type: string
+          format: uuid
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReturnRequestLineRequest'
+      required:
+      - client_return_id
+      - lines
+      - reason
+    ReturnRequestLineRequest:
+      type: object
+      properties:
+        sale_item:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+      required:
+      - quantity
+      - sale_item
     RoleEnum:
       enum:
       - TECH_ADMIN
@@ -5430,6 +5989,126 @@ components:
         * `PARTIALLY_RETURNED` - Partially returned
         * `RETURNED` - Returned
         * `CANCELLED` - Cancelled
+    SaleReturnItemRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        original_sale_item:
+          type: string
+          format: uuid
+          readOnly: true
+        sku:
+          type: string
+          readOnly: true
+        product_name:
+          type: string
+          readOnly: true
+        quantity:
+          type: integer
+          readOnly: true
+        condition:
+          allOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          readOnly: true
+        unit_price_snapshot:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        unit_cost_snapshot:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        line_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+      required:
+      - condition
+      - id
+      - line_total
+      - original_sale_item
+      - product_name
+      - quantity
+      - sku
+      - unit_cost_snapshot
+      - unit_price_snapshot
+    SaleReturnRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        original_sale:
+          type: string
+          format: uuid
+          readOnly: true
+        approval:
+          type: string
+          format: uuid
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SaleReturnReadStatusEnum'
+          readOnly: true
+        total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        client_return_id:
+          type: string
+          format: uuid
+          readOnly: true
+        approved_by:
+          type: string
+          format: uuid
+          readOnly: true
+        completed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SaleReturnItemRead'
+          readOnly: true
+        refunds:
+          type: array
+          items:
+            $ref: '#/components/schemas/RefundRead'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - approval
+      - approved_by
+      - client_return_id
+      - completed_at
+      - created_at
+      - id
+      - items
+      - original_sale
+      - refunds
+      - status
+      - total
+    SaleReturnReadStatusEnum:
+      enum:
+      - APPROVED
+      - COMPLETED
+      type: string
+      description: |-
+        * `APPROVED` - Approved
+        * `COMPLETED` - Completed
     SetPriceRequest:
       type: object
       properties:
@@ -5467,6 +6146,30 @@ components:
       description: |-
         * `ONLINE` - Online
         * `OFFLINE` - Offline
+    StockAdjustmentRequest:
+      type: object
+      properties:
+        variant:
+          type: string
+          format: uuid
+        direction:
+          $ref: '#/components/schemas/DirectionEnum'
+        quantity:
+          type: integer
+          minimum: 1
+        reason:
+          type: string
+          minLength: 10
+          maxLength: 2000
+        client_adjustment_id:
+          type: string
+          format: uuid
+      required:
+      - client_adjustment_id
+      - direction
+      - quantity
+      - reason
+      - variant
     StockCountItemRead:
       type: object
       properties:

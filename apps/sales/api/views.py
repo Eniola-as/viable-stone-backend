@@ -2,10 +2,15 @@ from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.exceptions import Conflict
 from apps.core.permissions import IsAuthenticatedAndMFAVerified
+from apps.sales.api.return_serializers import (
+    ApprovalRequestSerializer,
+    ReturnRequestCreateSerializer,
+)
 from apps.sales.api.serializers import (
     CustomerListSerializer,
     CustomerSerializer,
@@ -17,6 +22,7 @@ from apps.sales.models import Customer, Sale, SaleStatus
 from apps.sales.selectors import sales_visible_to
 from apps.sales.services.customers import resolve_customer
 from apps.sales.services.receipts import receipt_context, render_receipt_pdf
+from apps.sales.services.returns import RequestLine, submit_return_request
 from apps.sales.services.sales import CartLine, PaymentLine, create_sale
 
 
@@ -102,6 +108,39 @@ class SaleViewSet(
         summary="A4 paid-receipt PDF",
         tags=["Sales"],
     )
+    @extend_schema(
+        request=ReturnRequestCreateSerializer,
+        responses={201: ApprovalRequestSerializer},
+        summary="Submit a return request for a completed sale",
+        tags=["Approvals"],
+    )
+    @action(detail=True, methods=["post"], url_path="return-requests")
+    def return_requests(self, request, pk=None):
+        # Any employee or the owner at the branch may raise a return request
+        # (not only the cashier who rang the sale). Cross-branch id -> 404.
+        from django.shortcuts import get_object_or_404
+
+        sale = get_object_or_404(
+            Sale.objects.filter(branch_id=request.user.branch_id), pk=pk
+        )
+        serializer = ReturnRequestCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        approval = submit_return_request(
+            sale=sale,
+            requested_by=request.user,
+            reason=data["reason"],
+            lines=[
+                RequestLine(sale_item_id=line["sale_item"], quantity=line["quantity"])
+                for line in data["lines"]
+            ],
+            client_return_id=data["client_return_id"],
+            request=request,
+        )
+        return Response(
+            ApprovalRequestSerializer(approval).data, status=status.HTTP_201_CREATED
+        )
+
     def receipt_pdf(self, request, pk=None):
         sale = self._completed_sale_or_conflict()
         pdf = render_receipt_pdf(sale)

@@ -83,6 +83,8 @@ class ProfitReportSerializer(serializers.Serializer):
     revenue = serializers.DecimalField(**_MONEY)
     cogs = serializers.DecimalField(**_MONEY)
     gross_profit = serializers.DecimalField(**_MONEY)
+    returns_total = serializers.DecimalField(**_MONEY)
+    cost_reversed = serializers.DecimalField(**_MONEY)
     expenses_total = serializers.DecimalField(**_MONEY)
     net_profit = serializers.DecimalField(**_MONEY)
     sales_count = serializers.IntegerField()

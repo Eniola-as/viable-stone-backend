@@ -3,7 +3,7 @@ from decimal import Decimal
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from apps.sales.models import Customer, Payment, Sale, SaleItem
+from apps.sales.models import Customer, Payment, PaymentMethod, Sale, SaleItem
 from apps.sales.services.customers import mask_phone
 
 # --------------------------------------------------------------------------- #
@@ -58,7 +58,7 @@ class SaleItemInputSerializer(serializers.Serializer):
 
 
 class PaymentInputSerializer(serializers.Serializer):
-    method = serializers.ChoiceField(choices=["CASH", "TRANSFER", "POS"])
+    method = serializers.ChoiceField(choices=PaymentMethod.choices)
     amount = serializers.DecimalField(
         max_digits=14, decimal_places=2, min_value=Decimal("0.01")
     )

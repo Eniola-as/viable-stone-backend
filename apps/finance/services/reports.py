@@ -15,15 +15,34 @@ from django.utils import timezone
 from apps.core.exceptions import APIError
 from apps.core.money import ZERO, to_money
 from apps.inventory.models import InventoryBalance
-from apps.sales.models import Sale, SaleItem, SaleStatus
+from apps.sales.models import (
+    ReturnCondition,
+    Sale,
+    SaleItem,
+    SaleReturn,
+    SaleReturnItem,
+    SaleReturnStatus,
+    SaleStatus,
+)
 
 _NAMED = {"today", "week", "month", "custom"}
+# A sale keeps its recognised revenue even after it is returned; the return is a
+# separate contra entry.
+_SOLD_STATUSES = (
+    SaleStatus.COMPLETED,
+    SaleStatus.PARTIALLY_RETURNED,
+    SaleStatus.RETURNED,
+)
 _LINE_COGS = ExpressionWrapper(
     F("quantity") * F("unit_cost_snapshot"),
     output_field=DecimalField(max_digits=18, decimal_places=2),
 )
 _LINE_REVENUE = ExpressionWrapper(
     F("line_total"),
+    output_field=DecimalField(max_digits=18, decimal_places=2),
+)
+_RET_LINE_COST = ExpressionWrapper(
+    F("quantity") * F("unit_cost_snapshot"),
     output_field=DecimalField(max_digits=18, decimal_places=2),
 )
 
@@ -78,10 +97,19 @@ def resolve_range(period: str, start=None, end=None):
     return _lagos_midnight(start_date), _lagos_midnight(end_date)
 
 
-def _completed_sales(branch, start_dt, end_dt):
+def _sales_in_period(branch, start_dt, end_dt):
     return Sale.objects.filter(
         branch=branch,
-        status=SaleStatus.COMPLETED,
+        status__in=_SOLD_STATUSES,
+        completed_at__gte=start_dt,
+        completed_at__lt=end_dt,
+    )
+
+
+def _approved_returns_in_period(branch, start_dt, end_dt):
+    return SaleReturn.objects.filter(
+        branch=branch,
+        status=SaleReturnStatus.COMPLETED,
         completed_at__gte=start_dt,
         completed_at__lt=end_dt,
     )
@@ -89,13 +117,24 @@ def _completed_sales(branch, start_dt, end_dt):
 
 def profit_report(*, branch, period="today", start=None, end=None) -> dict:
     start_dt, end_dt = resolve_range(period, start, end)
-    sales = _completed_sales(branch, start_dt, end_dt)
+    sales = _sales_in_period(branch, start_dt, end_dt)
 
-    revenue = to_money(sales.aggregate(v=Sum("total"))["v"] or ZERO)
+    revenue_gross = to_money(sales.aggregate(v=Sum("total"))["v"] or ZERO)
     sales_count = sales.count()
+    cogs_gross = to_money(
+        SaleItem.objects.filter(sale__in=sales).aggregate(v=Sum(_LINE_COGS))["v"]
+        or ZERO
+    )
 
-    items = SaleItem.objects.filter(sale__in=sales)
-    cogs = to_money(items.aggregate(v=Sum(_LINE_COGS))["v"] or ZERO)
+    returns = _approved_returns_in_period(branch, start_dt, end_dt)
+    returns_total = to_money(returns.aggregate(v=Sum("total"))["v"] or ZERO)
+    # Reverse COGS only for RESELLABLE lines — DAMAGED_OR_OPENED goods are a loss.
+    cost_reversed = to_money(
+        SaleReturnItem.objects.filter(
+            sale_return__in=returns, condition=ReturnCondition.RESELLABLE
+        ).aggregate(v=Sum(_RET_LINE_COST))["v"]
+        or ZERO
+    )
 
     from apps.finance.models import Expense
 
@@ -109,6 +148,8 @@ def profit_report(*, branch, period="today", start=None, end=None) -> dict:
         or ZERO
     )
 
+    revenue = to_money(revenue_gross - returns_total)
+    cogs = to_money(cogs_gross - cost_reversed)
     gross = to_money(revenue - cogs)
     net = to_money(gross - expenses_total)
     return {
@@ -119,6 +160,8 @@ def profit_report(*, branch, period="today", start=None, end=None) -> dict:
         "revenue": revenue,
         "cogs": cogs,
         "gross_profit": gross,
+        "returns_total": returns_total,
+        "cost_reversed": cost_reversed,
         "expenses_total": expenses_total,
         "net_profit": net,
         "sales_count": sales_count,
@@ -129,25 +172,42 @@ def best_sellers(
     *, branch, period="month", start=None, end=None, limit=10
 ) -> list[dict]:
     start_dt, end_dt = resolve_range(period, start, end)
-    rows = (
-        SaleItem.objects.filter(sale__in=_completed_sales(branch, start_dt, end_dt))
-        .values("variant_id", "sku_snapshot", "product_name_snapshot")
-        .annotate(
-            quantity_sold=Sum("quantity"),
-            revenue=Sum(_LINE_REVENUE),
+    sold = {
+        r["variant_id"]: r
+        for r in SaleItem.objects.filter(
+            sale__in=_sales_in_period(branch, start_dt, end_dt)
         )
-        .order_by("-quantity_sold", "sku_snapshot")[:limit]
-    )
-    return [
-        {
-            "variant": r["variant_id"],
-            "sku": r["sku_snapshot"],
-            "product_name": r["product_name_snapshot"],
-            "quantity_sold": r["quantity_sold"],
-            "revenue": to_money(r["revenue"] or ZERO),
-        }
-        for r in rows
-    ]
+        .values("variant_id", "sku_snapshot", "product_name_snapshot")
+        .annotate(quantity_sold=Sum("quantity"), revenue=Sum(_LINE_REVENUE))
+    }
+    # Net approved returns (both conditions — a returned unit was not truly sold).
+    returned = {
+        r["original_sale_item__variant_id"]: r
+        for r in SaleReturnItem.objects.filter(
+            sale_return__in=_approved_returns_in_period(branch, start_dt, end_dt)
+        )
+        .values("original_sale_item__variant_id")
+        .annotate(qty=Sum("quantity"), amount=Sum("line_total"))
+    }
+    merged = []
+    for variant_id, row in sold.items():
+        ret = returned.get(variant_id, {})
+        qty = row["quantity_sold"] - (ret.get("qty") or 0)
+        if qty <= 0:
+            continue
+        merged.append(
+            {
+                "variant": variant_id,
+                "sku": row["sku_snapshot"],
+                "product_name": row["product_name_snapshot"],
+                "quantity_sold": qty,
+                "revenue": to_money(
+                    (row["revenue"] or ZERO) - (ret.get("amount") or ZERO)
+                ),
+            }
+        )
+    merged.sort(key=lambda r: (-r["quantity_sold"], r["sku"]))
+    return merged[:limit]
 
 
 def slow_movers(
@@ -155,7 +215,7 @@ def slow_movers(
 ) -> list[dict]:
     start_dt, end_dt = resolve_range(period, start, end)
     sold_variant_ids = set(
-        SaleItem.objects.filter(sale__in=_completed_sales(branch, start_dt, end_dt))
+        SaleItem.objects.filter(sale__in=_sales_in_period(branch, start_dt, end_dt))
         .values_list("variant_id", flat=True)
         .distinct()
     )

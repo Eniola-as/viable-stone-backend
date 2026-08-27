@@ -254,6 +254,14 @@ class OpeningStockSerializer(serializers.Serializer):
     )
 
 
+class StockAdjustmentSerializer(serializers.Serializer):
+    variant = serializers.UUIDField()
+    direction = serializers.ChoiceField(choices=["INCREASE", "DECREASE"])
+    quantity = serializers.IntegerField(min_value=1)
+    reason = serializers.CharField(min_length=10, max_length=2000)
+    client_adjustment_id = serializers.UUIDField()
+
+
 # --- Stock counts ----------------------------------------------------- #
 
 

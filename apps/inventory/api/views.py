@@ -15,6 +15,7 @@ from apps.inventory.api.serializers import (
     OpeningStockSerializer,
     RestockReadSerializer,
     RestockWriteSerializer,
+    StockAdjustmentSerializer,
     StockCountReadSerializer,
     StockCountWriteSerializer,
     StockMovementSerializer,
@@ -33,6 +34,7 @@ from apps.inventory.selectors import (
     movements_for_variant,
     stock_value_for_branch,
 )
+from apps.inventory.services.adjustments import adjust_stock
 from apps.inventory.services.restock import confirm_restock
 from apps.inventory.services.stock import open_stock
 from apps.inventory.services.stock_count import apply_stock_count, submit_stock_count
@@ -164,6 +166,34 @@ class InventoryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             quantity=serializer.validated_data["quantity"],
             unit_cost=serializer.validated_data["unit_cost"],
             created_by=request.user,
+            request=request,
+        )
+        return Response(InventoryBalanceOwnerSerializer(balance).data, status=201)
+
+    @extend_schema(
+        request=StockAdjustmentSerializer,
+        responses={201: InventoryBalanceOwnerSerializer},
+        summary="Protected stock adjustment (owner)",
+        tags=["Inventory"],
+    )
+    @action(detail=False, methods=["post"], permission_classes=[IsOwner])
+    def adjustments(self, request):
+        serializer = StockAdjustmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        variant = ProductVariant.objects.filter(
+            pk=data["variant"], product__branch_id=request.user.branch_id
+        ).first()
+        if variant is None:
+            raise NotFound("Unknown variant for this branch.")
+        balance = adjust_stock(
+            branch=request.user.branch,
+            variant=variant,
+            direction=data["direction"],
+            quantity=data["quantity"],
+            reason=data["reason"],
+            actor=request.user,
+            client_adjustment_id=data["client_adjustment_id"],
             request=request,
         )
         return Response(InventoryBalanceOwnerSerializer(balance).data, status=201)

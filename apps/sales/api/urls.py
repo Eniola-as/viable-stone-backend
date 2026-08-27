@@ -1,11 +1,14 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
+from apps.sales.api.return_views import ApprovalViewSet, SaleReturnViewSet
 from apps.sales.api.views import CustomerViewSet, SaleViewSet
 
 router = DefaultRouter()
 router.register("sales", SaleViewSet, basename="sale")
 router.register("customers", CustomerViewSet, basename="customer")
+router.register("approvals", ApprovalViewSet, basename="approval")
+router.register("returns", SaleReturnViewSet, basename="return")
 
 # Explicit receipt routes so "receipt.pdf" is a literal path segment, not a DRF
 # format suffix on "receipt".

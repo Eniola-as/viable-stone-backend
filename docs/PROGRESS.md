@@ -31,7 +31,7 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 | 11 | Ordinary fully-paid sales + split payments | ✅ | Customer/ReceiptSequence/Sale/SaleItem/Payment; `create_sale` (11-step atomic, idempotent); cash/transfer/POS/split; per-branch-day receipt numbering; sales list + cashier "own sales" rule; customer API (phone masked in lists). 37 tests incl. 2 real-thread concurrency (idempotency + no oversell). |
 | 12 | Receipt numbering + printable/PDF receipts | ✅ | A4 paid-receipt PDF (reportlab, no system deps) + JSON receipt, both from immutable snapshots. `GET /sales/{id}/receipt.pdf` (exact `Content-Type: application/pdf`, `Cache-Control: private, no-store`) + `/receipt/`, same role+branch scoping (cross-branch → 404). No cost/profit/DB-id/audit data. Currency shown as `NGN` (built-in fonts lack ₦; a non-Latin-1 symbol falls back). Business identity in `settings.BUSINESS_IDENTITY` only. Multi-page: header/columns repeat, "Page N" footer, long text wraps. 20 tests. |
 | 13 | Expenses + profit reports | ✅ | `ExpenseCategory` (CI-unique per branch) + `Expense` (amount > 0 CHECK, `receipt_file`). `void_expense` service: owner-only, once-only, requires a reason, preserves the original amount, audited. Owner APIs `/expense-categories/`, `/expenses/` (+ `void` action, no delete → 405, amount immutable after create). `/reports/` (owner-only): `profit` (revenue = Σ completed-sale totals, COGS = Σ qty·unit_cost_snapshot, gross, net = gross − non-voided expenses; Africa/Lagos `today`/`week`/`month`/`custom` ranges, end-inclusive), `best-sellers`, `slow-movers`, `inventory` (stock value + low-stock). 24 tests (freezegun-dated). |
-| 14 | Discounts, approvals, rare returns, refunds, protected adjustments | ⏳ | `reports.profit_report` has a comment marking where approved-return netting plugs in. |
+| 14 | Discounts, approvals, rare returns, refunds, protected adjustments | 🔄 | **14A ✅ (committed):** `ApprovalRequest`, `SaleReturn` (unique `(branch, client_return_id)`), `SaleReturnItem` (+`condition` RESELLABLE / DAMAGED_OR_OPENED), `Refund` (`issued_by`, amount>0). `submit_return_request` / `reject_return` / `approve_return` (owner-only, atomic, `select_for_update`, idempotent via `client_return_id`, ≤ sold−returned, original price+cost snapshots, RESELLABLE → `RETURN` movement + reverse COGS / DAMAGED → no restore, sale → PARTIALLY_RETURNED/RETURNED, receipt untouched). `adjust_stock` (owner, direction+positive qty+detailed reason, never negative, `select_for_update`, idempotent, audit before/after). APIs `/sales/{id}/return-requests/`, `/approvals/` (+approve/reject), `/returns/`, `/inventory/adjustments/`. `profit_report`/`best_sellers` net approved returns. 45 tests incl. 2 real-thread concurrency. **14B ⏳:** owner-approved fixed-Naira discount on an internal DRAFT sale (approval tied to exact draft contents; invalidated by cart/price change; atomic idempotent finalisation; discount allocated across items in minor units; returns refund net-of-discount). |
 | 15 | Notifications | ⏳ | |
 | 16 | One-device offline fixed-price checkout + idempotent sync | ⏳ | |
 | 17 | Security hardening, CI, monitoring, deployment, backup/restore docs | ⏳ | Redis required. |
@@ -43,15 +43,17 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 - `7a04860` — docs: 112-test collection + estimate note.
 - `27d9d2e` — **Stage 11** (fully-paid sales, split payments, receipt numbering).
 - `29ef932` — **Stage 12** (A4 paid-receipt PDF + JSON receipt).
-- Stage 13 — uncommitted at time of writing.
+- `6f9c6b6` — **Stage 13** (expenses + profit reports).
+- **Stage 14A** — returns, refunds, protected stock adjustments (Stage 14 still
+  IN PROGRESS: the owner-approved discount workflow, 14B, remains).
 - Branch `setup/backend-foundation`. `.env` excluded (git-ignored); `openapi.yml`
   and `docs/PROGRESS.md` committed in each.
 
-## Test suite — 2026-08-27 (through Stage 13)
+## Test suite — 2026-08-27 (through Stage 14A)
 
 ```
-pytest --collect-only -q  -> 193 tests collected
-pytest --create-db        -> 193 passed, 0 failed, 0 skipped   (PostgreSQL 18)
+pytest --collect-only -q  -> 238 tests collected
+pytest --create-db        -> 238 passed, 0 failed, 0 skipped   (PostgreSQL 18)
 coverage                  -> 92% lines
 ruff check .              -> All checks passed
 ruff format --check .     -> clean
@@ -59,11 +61,9 @@ manage.py check           -> 0 issues
 makemigrations --check    -> No changes detected
 spectacular --validate    -> exit 0, 0 warnings, 0 errors (openapi.yml)
 check --deploy (prod)     -> 0 issues
-pip-audit                 -> 7 findings, all in `pip` itself (25.2; upgrade pip).
-                             Project runtime deps are clean.
 ```
 
-### Collected test inventory (193, through Stage 13)
+### Collected test inventory (238, through Stage 14)
 
 | File | Tests |
 |---|---|
@@ -73,19 +73,29 @@ pip-audit                 -> 7 findings, all in `pip` itself (25.2; upgrade pip)
 | catalog/tests/test_api.py | 12 |
 | catalog/tests/test_models.py | 11 |
 | catalog/tests/test_pricing.py | 5 |
+| inventory/tests/test_adjustments.py | 9 |
 | inventory/tests/test_api.py | 13 |
 | inventory/tests/test_concurrency.py | 2 |
 | inventory/tests/test_opening_stock.py | 4 |
 | inventory/tests/test_restock.py | 5 |
 | inventory/tests/test_stock_count.py | 5 |
 | inventory/tests/test_weighted_cost.py | 7 |
-| sales/tests/test_create_sale.py | 19 |
-| sales/tests/test_sales_api.py | 16 |
-| sales/tests/test_receipts.py | 20 |
 | sales/tests/test_concurrency.py | 2 |
+| sales/tests/test_create_sale.py | 19 |
+| sales/tests/test_receipts.py | 20 |
+| sales/tests/test_returns.py | 18 |
+| sales/tests/test_returns_api.py | 12 |
+| sales/tests/test_returns_concurrency.py | 2 |
+| sales/tests/test_sales_api.py | 16 |
 | finance/tests/test_expenses.py | 14 |
 | finance/tests/test_reports.py | 10 |
-| **Total** | **193** |
+| finance/tests/test_reports_returns.py | 4 |
+| **Total** | **238** |
+
+Known remaining in Stage 14 scope: the DISCOUNT approval flow against an internal
+DRAFT sale (blueprint Stage 8 item 2). `ApprovalType.DISCOUNT` exists; the
+generic `ApprovalRequest` model supports it. The user's confirmed Stage-14 rules
+covered returns / refunds / protected adjustments only, all of which are done.
 
 (Stages 1–10 alone: 112.)
 
@@ -214,3 +224,36 @@ report 112, 0 skipped:
   range), `inventory` (stock value + low-stock summary). 24 tests, freezegun for
   date ranges. Full battery: **193 passed**, 92% coverage; ruff / check /
   makemigrations --check / check --deploy / spectacular all clean.
+- 2026-08-27: Stage 13 committed as `6f9c6b6`.
+- 2026-08-27: Stage 14 — approvals, rare returns, refunds, protected stock
+  adjustments. `apps/sales`: `ApprovalRequest` (generic, PENDING/APPROVED/
+  REJECTED, immutable once decided), `SaleReturn` (unique `(branch,
+  client_return_id)`), `SaleReturnItem` (+ `condition` RESELLABLE /
+  DAMAGED_OR_OPENED), `Refund` (`issued_by`, amount > 0 CHECK). Services:
+  `submit_return_request` (employee or owner, COMPLETED sale, qty ≤ sold —
+  a proposal), `reject_return` (owner, no side effects, immutable), `approve_return`
+  (owner only, one `transaction.atomic()`, `select_for_update(of=self)` on the
+  request + `select_for_update` on sale items + `lock_balances` in sorted order,
+  idempotent via `client_return_id`, hard cap = sold − already-returned, refund
+  uses the original `unit_price_snapshot`, accounting uses the original
+  `unit_cost_snapshot`, `sum(refunds) == return total` exactly, split refunds
+  allowed; RESELLABLE → `RETURN` stock movement + COGS reversed, DAMAGED_OR_OPENED
+  → no restore + COGS retained as loss; sale → PARTIALLY_RETURNED / RETURNED via
+  the `force=True` save guard; the original paid receipt is never regenerated).
+  `apps/inventory`: `adjust_stock` (owner only, INCREASE/DECREASE + positive whole
+  qty + ≥10-char reason, never negative, `select_for_update` + immutable
+  `ADJUSTMENT` movement, idempotency key re-checked under the row lock, audit
+  records actor/branch/time/old→change→new). `profit_report` and `best_sellers`
+  now net approved returns (revenue − return totals; COGS − reversed cost for
+  RESELLABLE only; `returns_total` / `cost_reversed` exposed). APIs:
+  `POST /api/v1/sales/{id}/return-requests/`, `/api/v1/approvals/` (+ owner-only
+  `approve` / `reject`), read-only `/api/v1/returns/`, owner-only
+  `POST /api/v1/inventory/adjustments/`. 45 tests incl. 2 real-thread PostgreSQL
+  concurrency (parallel approvals apply once; parallel adjustments with the same
+  key apply once). Full battery: **238 passed**, 92% coverage; ruff / check /
+  makemigrations --check / check --deploy clean; `openapi.yml` regenerated +
+  validated (0 warnings, 0 errors — payment-method / condition enums de-duped via
+  shared `.choices`).
+- 2026-08-27: committed the verified part as **Stage 14A** (returns, refunds,
+  protected stock adjustments). Stage 14 stays IN PROGRESS — 14B (owner-approved
+  fixed-Naira discount workflow on a DRAFT sale) is next, under TDD.

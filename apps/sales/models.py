@@ -1,4 +1,4 @@
-"""Customers, receipt sequencing, sales, sale items and payments."""
+"""Customers, receipt sequencing, sales, sale items, payments, returns."""
 
 import uuid
 
@@ -6,6 +6,30 @@ from django.conf import settings
 from django.db import models
 
 from apps.core.models import BaseModel, UUIDModel
+
+
+class ApprovalType(models.TextChoices):
+    DISCOUNT = "DISCOUNT", "Discount"
+    RETURN = "RETURN", "Return"
+    CORRECTION = "CORRECTION", "Correction"
+    STOCK_ADJUSTMENT = "STOCK_ADJUSTMENT", "Stock adjustment"
+    DAMAGE = "DAMAGE", "Damage"
+
+
+class ApprovalStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    APPROVED = "APPROVED", "Approved"
+    REJECTED = "REJECTED", "Rejected"
+
+
+class SaleReturnStatus(models.TextChoices):
+    APPROVED = "APPROVED", "Approved"
+    COMPLETED = "COMPLETED", "Completed"
+
+
+class ReturnCondition(models.TextChoices):
+    RESELLABLE = "RESELLABLE", "Resellable — restored to inventory"
+    DAMAGED_OR_OPENED = "DAMAGED_OR_OPENED", "Damaged or opened — not restored"
 
 
 class SaleStatus(models.TextChoices):
@@ -200,3 +224,159 @@ class Payment(UUIDModel):
 
     def __str__(self):
         return f"{self.method} {self.amount}"
+
+
+# --------------------------------------------------------------------------- #
+# Approvals and rare returns                                                  #
+# --------------------------------------------------------------------------- #
+
+
+class ApprovalRequest(BaseModel):
+    """Generic request → owner decision. Approved / rejected rows are immutable."""
+
+    branch = models.ForeignKey(
+        "accounts.Branch", on_delete=models.PROTECT, related_name="approval_requests"
+    )
+    sale = models.ForeignKey(
+        Sale,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="approval_requests",
+    )
+    stock_count = models.ForeignKey(
+        "inventory.StockCount",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="approval_requests",
+    )
+    variant = models.ForeignKey(
+        "catalog.ProductVariant",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="approval_requests",
+    )
+    request_type = models.CharField(max_length=20, choices=ApprovalType.choices)
+    status = models.CharField(
+        max_length=10, choices=ApprovalStatus.choices, default=ApprovalStatus.PENDING
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="approval_requests_made",
+    )
+    reason = models.TextField()
+    requested_changes = models.JSONField(default=dict, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="approval_requests_reviewed",
+    )
+    reviewer_note = models.TextField(blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["branch", "status", "-created_at"]),
+            models.Index(fields=["request_type", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.request_type} {self.status} ({self.pk})"
+
+    @property
+    def is_pending(self) -> bool:
+        return self.status == ApprovalStatus.PENDING
+
+
+class SaleReturn(BaseModel):
+    branch = models.ForeignKey(
+        "accounts.Branch", on_delete=models.PROTECT, related_name="sale_returns"
+    )
+    original_sale = models.ForeignKey(
+        Sale, on_delete=models.PROTECT, related_name="returns"
+    )
+    approval = models.OneToOneField(
+        ApprovalRequest, on_delete=models.PROTECT, related_name="sale_return"
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=SaleReturnStatus.choices,
+        default=SaleReturnStatus.COMPLETED,
+    )
+    total = models.DecimalField(max_digits=14, decimal_places=2)
+    client_return_id = models.UUIDField()
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="sale_returns_approved",
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["branch", "client_return_id"],
+                name="salereturn_unique_branch_client_id",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(total__gte=0), name="salereturn_total_gte_0"
+            ),
+        ]
+
+    def __str__(self):
+        return f"Return {self.pk} for {self.original_sale_id}"
+
+
+class SaleReturnItem(UUIDModel):
+    sale_return = models.ForeignKey(
+        SaleReturn, on_delete=models.CASCADE, related_name="items"
+    )
+    original_sale_item = models.ForeignKey(
+        SaleItem, on_delete=models.PROTECT, related_name="return_items"
+    )
+    quantity = models.PositiveIntegerField()
+    condition = models.CharField(max_length=20, choices=ReturnCondition.choices)
+    unit_price_snapshot = models.DecimalField(max_digits=14, decimal_places=2)
+    unit_cost_snapshot = models.DecimalField(max_digits=14, decimal_places=2)
+    line_total = models.DecimalField(max_digits=14, decimal_places=2)
+
+    class Meta:
+        ordering = ["original_sale_item__sku_snapshot"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantity__gt=0), name="salereturnitem_qty_gt_0"
+            ),
+        ]
+
+
+class Refund(UUIDModel):
+    sale_return = models.ForeignKey(
+        SaleReturn, on_delete=models.CASCADE, related_name="refunds"
+    )
+    method = models.CharField(max_length=10, choices=PaymentMethod.choices)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    reference = models.CharField(max_length=150, blank=True)
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="refunds_issued",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0), name="refund_amount_gt_0"
+            ),
+        ]
+
+    def __str__(self):
+        return f"Refund {self.method} {self.amount}"
