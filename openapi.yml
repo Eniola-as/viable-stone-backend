@@ -902,6 +902,425 @@ paths:
               schema:
                 $ref: '#/components/schemas/Customer'
           description: ''
+  /api/v1/expense-categories/:
+    get:
+      operationId: expense_categories_list
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: List expense categories (owner)
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Finance
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedExpenseCategoryList'
+          description: ''
+    post:
+      operationId: expense_categories_create
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: Create an expense category (owner)
+      tags:
+      - Finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpenseCategoryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ExpenseCategoryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExpenseCategoryRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpenseCategory'
+          description: ''
+  /api/v1/expense-categories/{id}/:
+    get:
+      operationId: expense_categories_retrieve
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this expense category.
+        required: true
+      tags:
+      - expense-categories
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpenseCategory'
+          description: ''
+    put:
+      operationId: expense_categories_update
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this expense category.
+        required: true
+      tags:
+      - expense-categories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpenseCategoryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ExpenseCategoryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExpenseCategoryRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpenseCategory'
+          description: ''
+    patch:
+      operationId: expense_categories_partial_update
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this expense category.
+        required: true
+      tags:
+      - expense-categories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedExpenseCategoryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedExpenseCategoryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedExpenseCategoryRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpenseCategory'
+          description: ''
+  /api/v1/expenses/:
+    get:
+      operationId: expenses_list
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: List expenses (owner)
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Finance
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedExpenseList'
+          description: ''
+    post:
+      operationId: expenses_create
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: Record an expense (owner)
+      tags:
+      - Finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpenseRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ExpenseRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExpenseRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+          description: ''
+  /api/v1/expenses/{id}/:
+    get:
+      operationId: expenses_retrieve
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: Retrieve an expense (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this expense.
+        required: true
+      tags:
+      - Finance
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+          description: ''
+    put:
+      operationId: expenses_update
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this expense.
+        required: true
+      tags:
+      - expenses
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpenseRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ExpenseRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExpenseRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+          description: ''
+    patch:
+      operationId: expenses_partial_update
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this expense.
+        required: true
+      tags:
+      - expenses
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedExpenseRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedExpenseRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedExpenseRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+          description: ''
+  /api/v1/expenses/{id}/void/:
+    post:
+      operationId: expenses_void_create
+      description: |-
+        Restrict list/detail querysets to the caller's branch.
+
+        - Owners and employees only ever see their own branch's rows, so a guessed
+          object id from another branch returns 404, not another branch's data.
+        - The technical administrator is not a business actor; by default they see
+          nothing here unless ``tech_admin_sees_all`` is set on the view.
+      summary: Void an expense (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this expense.
+        required: true
+      tags:
+      - Finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpenseVoidRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ExpenseVoidRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExpenseVoidRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+          description: ''
   /api/v1/health/:
     get:
       operationId: health_retrieve
@@ -1201,6 +1620,181 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProductWrite'
+          description: ''
+  /api/v1/reports/best-sellers/:
+    get:
+      operationId: reports_best_sellers_list
+      description: Owner-only computed reports. No cost/profit ever reaches an employee.
+      summary: Best-selling variants for a period
+      parameters:
+      - in: query
+        name: end
+        schema:
+          type: string
+        description: ISO date, inclusive (custom period)
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: max rows (best/slow sellers)
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: period
+        schema:
+          type: string
+        description: today | week | month | custom
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: start
+        schema:
+          type: string
+        description: ISO date (custom period)
+      tags:
+      - Reports
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBestSellerList'
+          description: ''
+  /api/v1/reports/inventory/:
+    get:
+      operationId: reports_inventory_retrieve
+      description: Owner-only computed reports. No cost/profit ever reaches an employee.
+      summary: Stock value and low-stock summary (owner)
+      tags:
+      - Reports
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventorySummary'
+          description: ''
+  /api/v1/reports/profit/:
+    get:
+      operationId: reports_profit_retrieve
+      description: Owner-only computed reports. No cost/profit ever reaches an employee.
+      summary: Revenue / COGS / gross & net profit for a period
+      parameters:
+      - in: query
+        name: end
+        schema:
+          type: string
+        description: ISO date, inclusive (custom period)
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: max rows (best/slow sellers)
+      - in: query
+        name: period
+        schema:
+          type: string
+        description: today | week | month | custom
+      - in: query
+        name: start
+        schema:
+          type: string
+        description: ISO date (custom period)
+      tags:
+      - Reports
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfitReport'
+          description: ''
+  /api/v1/reports/slow-movers/:
+    get:
+      operationId: reports_slow_movers_list
+      description: Owner-only computed reports. No cost/profit ever reaches an employee.
+      summary: In-stock variants with no sales in a period
+      parameters:
+      - in: query
+        name: end
+        schema:
+          type: string
+        description: ISO date, inclusive (custom period)
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: max rows (best/slow sellers)
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: period
+        schema:
+          type: string
+        description: today | week | month | custom
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: start
+        schema:
+          type: string
+        description: ISO date (custom period)
+      tags:
+      - Reports
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSlowMoverList'
           description: ''
   /api/v1/restocks/:
     get:
@@ -2462,6 +3056,28 @@ components:
       - request_id
       - target_id
       - target_type
+    BestSeller:
+      type: object
+      properties:
+        variant:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        product_name:
+          type: string
+        quantity_sold:
+          type: integer
+        revenue:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
+      required:
+      - product_name
+      - quantity_sold
+      - revenue
+      - sku
+      - variant
     Branch:
       type: object
       properties:
@@ -2669,6 +3285,139 @@ components:
         phone:
           type: string
           maxLength: 30
+    Expense:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        category:
+          type: string
+          format: uuid
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        expense_date:
+          type: string
+          format: date
+        description:
+          type: string
+        receipt_file:
+          type: string
+          format: uri
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+        is_voided:
+          type: boolean
+          readOnly: true
+        void_reason:
+          type: string
+          readOnly: true
+        voided_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        voided_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount
+      - category
+      - created_at
+      - created_by
+      - description
+      - expense_date
+      - id
+      - is_voided
+      - updated_at
+      - void_reason
+      - voided_at
+      - voided_by
+    ExpenseCategory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 100
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - updated_at
+    ExpenseCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        is_active:
+          type: boolean
+      required:
+      - name
+    ExpenseRequest:
+      type: object
+      properties:
+        category:
+          type: string
+          format: uuid
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        expense_date:
+          type: string
+          format: date
+        description:
+          type: string
+          minLength: 1
+        receipt_file:
+          type: string
+          format: binary
+      required:
+      - amount
+      - category
+      - description
+      - expense_date
+    ExpenseVoidRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+      required:
+      - reason
     Health:
       type: object
       properties:
@@ -2801,6 +3550,24 @@ components:
       - variant
       - variant_description
       - variant_sku
+    InventorySummary:
+      type: object
+      properties:
+        stock_value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
+        low_stock_count:
+          type: integer
+        distinct_variants_in_stock:
+          type: integer
+        total_units_in_stock:
+          type: integer
+      required:
+      - distinct_variants_in_stock
+      - low_stock_count
+      - stock_value
+      - total_units_in_stock
     KindEnum:
       enum:
       - PAINT
@@ -3017,6 +3784,36 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AuditLog'
+    PaginatedBestSellerList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BestSeller'
     PaginatedBranchList:
       type: object
       required:
@@ -3137,6 +3934,66 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CustomerList'
+    PaginatedExpenseCategoryList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExpenseCategory'
+    PaginatedExpenseList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Expense'
     PaginatedInventoryBalanceEmployeeList:
       type: object
       required:
@@ -3347,6 +4204,36 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SaleRead'
+    PaginatedSlowMoverList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlowMover'
     PaginatedStockCountReadList:
       type: object
       required:
@@ -3474,6 +4361,34 @@ components:
         phone:
           type: string
           maxLength: 30
+    PatchedExpenseCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        is_active:
+          type: boolean
+    PatchedExpenseRequest:
+      type: object
+      properties:
+        category:
+          type: string
+          format: uuid
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        expense_date:
+          type: string
+          format: date
+        description:
+          type: string
+          minLength: 1
+        receipt_file:
+          type: string
+          format: binary
     PatchedOwnerUserRequest:
       type: object
       description: Owner-facing user management. Password is write-only; never echoed.
@@ -3979,6 +4894,52 @@ components:
       - category
       - kind
       - name
+    ProfitReport:
+      type: object
+      properties:
+        period:
+          type: string
+        start:
+          type: string
+          format: date
+        end:
+          type: string
+          format: date
+        currency:
+          type: string
+        revenue:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
+        cogs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
+        gross_profit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
+        expenses_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
+        net_profit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,16}(?:\.\d{0,2})?$
+        sales_count:
+          type: integer
+      required:
+      - cogs
+      - currency
+      - end
+      - expenses_total
+      - gross_profit
+      - net_profit
+      - period
+      - revenue
+      - sales_count
+      - start
     Receipt:
       type: object
       properties:
@@ -4478,6 +5439,26 @@ components:
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
       required:
       - amount
+    SlowMover:
+      type: object
+      properties:
+        variant:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        product_name:
+          type: string
+        quantity_in_stock:
+          type: integer
+        quantity_sold:
+          type: integer
+      required:
+      - product_name
+      - quantity_in_stock
+      - quantity_sold
+      - sku
+      - variant
     SourceEnum:
       enum:
       - ONLINE

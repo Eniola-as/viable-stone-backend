@@ -30,8 +30,8 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 | 10 | Suppliers, restocking, balances, weighted-avg cost, movements | ✅ | 36 tests incl. 2 real-thread PostgreSQL concurrency tests. |
 | 11 | Ordinary fully-paid sales + split payments | ✅ | Customer/ReceiptSequence/Sale/SaleItem/Payment; `create_sale` (11-step atomic, idempotent); cash/transfer/POS/split; per-branch-day receipt numbering; sales list + cashier "own sales" rule; customer API (phone masked in lists). 37 tests incl. 2 real-thread concurrency (idempotency + no oversell). |
 | 12 | Receipt numbering + printable/PDF receipts | ✅ | A4 paid-receipt PDF (reportlab, no system deps) + JSON receipt, both from immutable snapshots. `GET /sales/{id}/receipt.pdf` (exact `Content-Type: application/pdf`, `Cache-Control: private, no-store`) + `/receipt/`, same role+branch scoping (cross-branch → 404). No cost/profit/DB-id/audit data. Currency shown as `NGN` (built-in fonts lack ₦; a non-Latin-1 symbol falls back). Business identity in `settings.BUSINESS_IDENTITY` only. Multi-page: header/columns repeat, "Page N" footer, long text wraps. 20 tests. |
-| 13 | Expenses + profit reports | ⏳ | |
-| 14 | Discounts, approvals, rare returns, refunds, protected adjustments | ⏳ | |
+| 13 | Expenses + profit reports | ✅ | `ExpenseCategory` (CI-unique per branch) + `Expense` (amount > 0 CHECK, `receipt_file`). `void_expense` service: owner-only, once-only, requires a reason, preserves the original amount, audited. Owner APIs `/expense-categories/`, `/expenses/` (+ `void` action, no delete → 405, amount immutable after create). `/reports/` (owner-only): `profit` (revenue = Σ completed-sale totals, COGS = Σ qty·unit_cost_snapshot, gross, net = gross − non-voided expenses; Africa/Lagos `today`/`week`/`month`/`custom` ranges, end-inclusive), `best-sellers`, `slow-movers`, `inventory` (stock value + low-stock). 24 tests (freezegun-dated). |
+| 14 | Discounts, approvals, rare returns, refunds, protected adjustments | ⏳ | `reports.profit_report` has a comment marking where approved-return netting plugs in. |
 | 15 | Notifications | ⏳ | |
 | 16 | One-device offline fixed-price checkout + idempotent sync | ⏳ | |
 | 17 | Security hardening, CI, monitoring, deployment, backup/restore docs | ⏳ | Redis required. |
@@ -42,26 +42,28 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 - `985233f` — **Stages 1–10** (config, accounts+MFA, catalogue, inventory). 127 files.
 - `7a04860` — docs: 112-test collection + estimate note.
 - `27d9d2e` — **Stage 11** (fully-paid sales, split payments, receipt numbering).
+- `29ef932` — **Stage 12** (A4 paid-receipt PDF + JSON receipt).
+- Stage 13 — uncommitted at time of writing.
 - Branch `setup/backend-foundation`. `.env` excluded (git-ignored); `openapi.yml`
   and `docs/PROGRESS.md` committed in each.
 
-## Test suite — 2026-08-27 (through Stage 12)
+## Test suite — 2026-08-27 (through Stage 13)
 
 ```
-pytest --collect-only -q  -> 169 tests collected
-pytest --create-db        -> 169 passed, 0 failed, 0 skipped   (PostgreSQL 18)
-coverage                  -> 93% lines
+pytest --collect-only -q  -> 193 tests collected
+pytest --create-db        -> 193 passed, 0 failed, 0 skipped   (PostgreSQL 18)
+coverage                  -> 92% lines
 ruff check .              -> All checks passed
 ruff format --check .     -> clean
 manage.py check           -> 0 issues
 makemigrations --check    -> No changes detected
-spectacular --validate    -> exit 0, 0 warnings, 0 errors (openapi.yml, ~124 KB)
+spectacular --validate    -> exit 0, 0 warnings, 0 errors (openapi.yml)
 check --deploy (prod)     -> 0 issues
 pip-audit                 -> 7 findings, all in `pip` itself (25.2; upgrade pip).
                              Project runtime deps are clean.
 ```
 
-### Collected test inventory (169, through Stage 12)
+### Collected test inventory (193, through Stage 13)
 
 | File | Tests |
 |---|---|
@@ -81,7 +83,9 @@ pip-audit                 -> 7 findings, all in `pip` itself (25.2; upgrade pip)
 | sales/tests/test_sales_api.py | 16 |
 | sales/tests/test_receipts.py | 20 |
 | sales/tests/test_concurrency.py | 2 |
-| **Total** | **169** |
+| finance/tests/test_expenses.py | 14 |
+| finance/tests/test_reports.py | 10 |
+| **Total** | **193** |
 
 (Stages 1–10 alone: 112.)
 
@@ -195,3 +199,18 @@ report 112, 0 skipped:
   multi-page structure. Full battery green: **169 passed**, 93% coverage,
   `openapi.yml` regenerated + validated (0 warn/err). `pip-audit`: only `pip`
   itself. `pypdf` added as a dev dep for PDF text assertions.
+- 2026-08-27: Stage 12 committed as `29ef932`.
+- 2026-08-27: Stage 13 — expenses + reports. `apps/finance`: `ExpenseCategory`
+  (case-insensitive unique per branch) + `Expense` (amount > 0 CHECK,
+  `receipt_file`, `is_voided`/`void_reason`/`voided_by`/`voided_at`).
+  `void_expense` service — owner-only, `select_for_update`, once-only, requires a
+  reason, never overwrites the amount, writes an audit row. Owner APIs
+  `/api/v1/expense-categories/` and `/api/v1/expenses/` (`void` action; DELETE →
+  405; `amount` immutable and edits blocked once voided). `/api/v1/reports/`
+  (owner-only): `profit` (revenue = Σ completed-sale `total`; COGS =
+  Σ `quantity * unit_cost_snapshot`; gross = revenue − COGS; net = gross −
+  non-voided expenses; `period=today|week|month|custom`, Africa/Lagos bounds,
+  end-date inclusive), `best-sellers`, `slow-movers` (in-stock, no sales in
+  range), `inventory` (stock value + low-stock summary). 24 tests, freezegun for
+  date ranges. Full battery: **193 passed**, 92% coverage; ruff / check /
+  makemigrations --check / check --deploy / spectacular all clean.
