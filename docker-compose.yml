@@ -7,15 +7,19 @@
 #   REDIS_URL=redis://127.0.0.1:6379/0 CACHE_BACKEND=redis \
 #       .venv/Scripts/python manage.py runserver
 #
-# To pin by digest (recommended): after `docker pull redis:7.4.2-alpine`, run
-# `docker image inspect --format '{{index .RepoDigests 0}}' redis:7.4.2-alpine`
-# and replace the image line with  redis@sha256:<digest>.
+# The Redis image is pinned by its verified multi-architecture manifest-list
+# digest (Docker Hub, library/redis), confirmed on 2026-08-27 to equal
+# redis:7.4-alpine. To re-verify:
+#   TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/redis:pull" | jq -r .token)
+#   curl -sI -H "Authorization: Bearer $TOKEN" \
+#     -H 'Accept: application/vnd.oci.image.index.v1+json' \
+#     https://registry-1.docker.io/v2/library/redis/manifests/7.4.11-alpine | grep -i docker-content-digest
 
 name: viable-stone-dev
 
 services:
   redis:
-    image: redis:7.4.2-alpine
+    image: redis:7.4.11-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
       # 127.0.0.1 only — never exposed on the LAN.

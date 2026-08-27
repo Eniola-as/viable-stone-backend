@@ -6,8 +6,15 @@ Nothing here has been deployed. This is the runbook for when the shop is ready.
 
 `Dockerfile` builds a production image:
 
-* base `python:3.13.1-slim-bookworm` (pinned), multi-stage.
-* runtime dependencies only, installed from `requirements.lock` into `/venv`.
+* base `python:3.13.15-slim-bookworm`, pinned by its **verified**
+  multi-architecture manifest-list digest
+  (`sha256:c45a22ea000adfd9cda29364bbe7edd23001ce5cc2ad15857cfbf7766943b9ca`,
+  resolved from Docker Hub `library/python` on 2026-08-27 and confirmed equal
+  to `python:3.13-slim-bookworm`). Python **3.13** is used consistently in the
+  image, CI (`actions/setup-python` with `python-version: "3.13"`) and
+  `pyproject.toml` (`requires-python = ">=3.13,<3.14"`).
+* multi-stage; runtime dependencies only, installed from `requirements.lock`
+  into `/venv`.
 * runs as the non-root `app` user.
 * `collectstatic` runs at build time with throwaway `config.settings.build`
   settings; WhiteNoise serves the hashed static assets.
@@ -15,6 +22,16 @@ Nothing here has been deployed. This is the runbook for when the shop is ready.
 * entrypoint: `gunicorn config.wsgi:application -c gunicorn.conf.py`
   (`gunicorn.conf.py` documents workers / threads / timeout / graceful
   shutdown; override via `WEB_CONCURRENCY`, `GUNICORN_*`).
+
+## Container vulnerability scanning
+
+CI's `docker` job scans the built image with Trivy (`aquasecurity/trivy-action`,
+pinned to a verified commit SHA) and **fails the build on any fixable HIGH or
+CRITICAL** OS/application vulnerability. `ignore-unfixed: true` is deliberate —
+HIGH/CRITICAL findings in the Debian base with no upstream fix are still printed
+but do not block the pipeline; any *accepted* CVE must be listed with a
+justification and review date in `.trivyignore` (currently empty). Re-run
+locally with `trivy image viable-stone-backend:local`.
 
 Build & smoke-test locally:
 

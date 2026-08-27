@@ -1,0 +1,17 @@
+# Trivy vulnerability-scan exception list for the production container image.
+#
+# Policy (enforced by .github/workflows/ci.yml -> "Scan final image"):
+#   * The build FAILS on any HIGH or CRITICAL OS or application vulnerability
+#     that has a fix available (`ignore-unfixed: true`).
+#   * `ignore-unfixed: true` is a deliberate choice: HIGH/CRITICAL findings in
+#     the Debian slim-bookworm base with NO upstream fix cannot be remediated
+#     here and would otherwise block every build indefinitely. They are still
+#     reported in the scan output for visibility and are re-evaluated whenever
+#     Dependabot bumps the pinned base-image digest.
+#   * Every entry below MUST have: the CVE id, the affected package, why it is
+#     accepted, and a review-by date. No silent ignores.
+#
+# Format: one CVE id per line (optionally `CVE-XXXX-YYYY exp:2026-12-31`).
+#
+# --- Accepted exceptions (none at present) --------------------------------- #
+# (add entries here with the justification block above)

@@ -2,6 +2,11 @@ name: CI
 
 # Non-deployment pipeline. It never touches Railway and never uses production
 # credentials — every value below is a throwaway CI dummy.
+#
+# Third-party actions are pinned to a verified full-length commit SHA taken
+# from the action's own official repository (git ref -> commit), with the
+# release tag noted alongside. Dependabot (.github/dependabot.yml) keeps them
+# current.
 
 on:
   push:
@@ -29,17 +34,17 @@ env:
   CSRF_TRUSTED_ORIGINS: "http://localhost:3000"
   OFFLINE_SIGNING_KEY: "ci-only-offline-signing-key-not-a-secret"
   DJANGO_STORAGE_BACKEND: "local"
-  CACHE_BACKEND: "redis"
   AXES_ENABLED: "false"
 
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     services:
       postgres:
-        image: postgres:18
+        # library/postgres:18 — verified manifest-list digest (Docker Hub, 2026-08-27)
+        image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
         env:
           POSTGRES_USER: viable
           POSTGRES_PASSWORD: viable
@@ -47,25 +52,34 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U viable"
-          --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-interval 5s --health-timeout 5s --health-retries 20
       redis:
-        image: redis:7.4.2-alpine
+        # library/redis:7.4.11-alpine — verified manifest-list digest (Docker Hub, 2026-08-27)
+        image: redis:7.4.11-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
         ports: ["6379:6379"]
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 5s --health-timeout 3s --health-retries 10
+          --health-interval 5s --health-timeout 3s --health-retries 20
 
     steps:
-      # Pinned to a major tag (not a floating "latest"). For a stricter policy,
-      # replace with the full commit SHA; Dependabot (.github/dependabot.yml)
-      # keeps action versions current.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install PostgreSQL 18 client (pg_dump/pg_restore for the backup drill)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-18
+          pg_dump --version
 
       - name: Install locked dependencies
         run: |
@@ -87,10 +101,45 @@ jobs:
       - name: Migration drift check
         run: python manage.py makemigrations --check --dry-run
 
-      - name: PostgreSQL test suite + real-Redis integration + coverage gate
+      - name: Wait for Redis
+        run: |
+          for i in $(seq 1 30); do
+            if python -c "import redis,sys; sys.exit(0 if redis.Redis.from_url('${TEST_REDIS_URL}', socket_connect_timeout=1).ping() else 1)"; then
+              echo "Redis is up"; exit 0
+            fi
+            echo "waiting for Redis ($i)"; sleep 2
+          done
+          echo "::error::Redis did not become healthy"; exit 1
+
+      - name: Full PostgreSQL suite + coverage gate (no test may be skipped)
         run: |
           pytest -p no:randomly --create-db \
-            --cov=apps --cov-report=term-missing --cov-fail-under=90
+            --cov=apps --cov-report=term-missing --cov-fail-under=90 \
+            --junitxml=full-results.xml
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          r = ET.parse("full-results.xml").getroot()
+          s = r if r.tag == "testsuite" else r.find("testsuite")
+          tests, fail, err, skip = (int(s.get(k)) for k in ("tests", "failures", "errors", "skipped"))
+          print(f"full suite: tests={tests} failures={fail} errors={err} skipped={skip}")
+          assert fail == 0 and err == 0, "test failures/errors"
+          assert skip == 0, f"{skip} test(s) skipped in CI; every dependency must be present"
+          assert tests >= 484, f"expected >= 484 tests, collected {tests}"
+          PY
+
+      - name: Redis integration tests must run (marker, 5 tests, 0 skipped)
+        run: |
+          pytest -p no:randomly -m redis --junitxml=redis-results.xml -rs
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          r = ET.parse("redis-results.xml").getroot()
+          s = r if r.tag == "testsuite" else r.find("testsuite")
+          tests, fail, err, skip = (int(s.get(k)) for k in ("tests", "failures", "errors", "skipped"))
+          print(f"redis marker: tests={tests} failures={fail} errors={err} skipped={skip}")
+          assert tests == 5, f"expected exactly 5 redis-marked tests, collected {tests}"
+          assert skip == 0, "redis-marked tests were SKIPPED; real Redis must be reachable"
+          assert fail == 0 and err == 0, "redis-marked tests failed"
+          PY
 
       - name: OpenAPI schema validation (fail on warnings) + staleness check
         run: |
@@ -104,24 +153,96 @@ jobs:
         run: python manage.py check --deploy --fail-level WARNING
 
       - name: Dependency vulnerability audit
-        run: pip-audit --strict --progress-spinner off
+        run: pip-audit --strict --skip-editable --progress-spinner off
 
       - name: Secret-leak scan
         run: bash scripts/check_secrets.sh
 
   docker:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+        env:
+          POSTGRES_USER: viable
+          POSTGRES_PASSWORD: viable
+          POSTGRES_DB: viable_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U viable"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7.4.11-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+
+    env:
+      IMAGE: viable-stone-backend:ci
+      RUN_ENV: >-
+        -e SECRET_KEY=ci-only-not-a-secret-ci-only-not-a-secret-0123456789
+        -e DATABASE_URL=postgres://viable:viable@127.0.0.1:5432/viable_ci
+        -e ALLOWED_HOSTS=localhost,127.0.0.1
+        -e CORS_ALLOWED_ORIGINS=http://localhost:3000
+        -e CSRF_TRUSTED_ORIGINS=http://localhost:3000
+        -e OFFLINE_SIGNING_KEY=ci-only-offline-signing-key
+        -e DJANGO_STORAGE_BACKEND=local
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build production image
-        run: docker build -t viable-stone-backend:ci .
+        run: docker build -t "$IMAGE" .
 
-      - name: Non-root runtime smoke test
+      - name: Runtime does not run as root (UID != 0)
         run: |
-          uid="$(docker run --rm --entrypoint id viable-stone-backend:ci -u)"
+          uid="$(docker run --rm --entrypoint id "$IMAGE" -u)"
+          echo "container UID: $uid"
           test "$uid" != "0" || (echo "::error::image runs as root" && exit 1)
-          docker run --rm --entrypoint python viable-stone-backend:ci \
-            -c "import django; print('django', django.get_version())"
+
+      - name: Liveness becomes healthy; readiness OK with PostgreSQL + Redis up
+        run: |
+          cid="$(docker run -d --network host $RUN_ENV \
+            -e REDIS_URL=redis://127.0.0.1:6379/0 -e REDIS_HEALTHCHECK=true "$IMAGE")"
+          trap 'docker logs "$cid" || true; docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/v1/health/live/ || true)"
+            [ "$code" = "200" ] && break
+            echo "waiting for liveness ($i): $code"; sleep 2
+          done
+          test "$code" = "200" || (echo "::error::liveness never became healthy" && exit 1)
+          ready="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/v1/health/ready/)"
+          echo "readiness (deps up): $ready"
+          test "$ready" = "200" || (echo "::error::readiness not 200 with deps up" && exit 1)
+          docker rm -f "$cid" >/dev/null; trap - EXIT
+
+      - name: Readiness returns 503 when required Redis is unavailable
+        run: |
+          cid="$(docker run -d --network host $RUN_ENV \
+            -e REDIS_URL=redis://127.0.0.1:6399/0 -e REDIS_HEALTHCHECK=true "$IMAGE")"
+          trap 'docker logs "$cid" || true; docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            live="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/v1/health/live/ || true)"
+            [ "$live" = "200" ] && break
+            sleep 2
+          done
+          test "$live" = "200" || (echo "::error::process did not start" && exit 1)
+          ready="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/v1/health/ready/)"
+          echo "readiness (Redis down): $ready"
+          test "$ready" = "503" || (echo "::error::readiness should be 503 when Redis is down" && exit 1)
+          docker rm -f "$cid" >/dev/null; trap - EXIT
+
+      - name: Scan final image for HIGH/CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: viable-stone-backend:ci
+          format: table
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore

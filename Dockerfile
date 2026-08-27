@@ -1,11 +1,15 @@
 # syntax=docker/dockerfile:1
 # Production image. Nothing here is deployed by this repository; it exists so
-# the image can be built and smoke-tested locally.
+# the image can be built and smoke-tested locally / in CI.
+#
+# Base image is pinned by its verified multi-architecture manifest-list digest
+# (Docker Hub, library/python), confirmed to equal python:3.13-slim-bookworm
+# on 2026-08-27. Digest covers linux/amd64, arm64, arm/v7, 386, ppc64le.
 
 # --------------------------------------------------------------------------- #
 # Builder — install locked runtime dependencies into an isolated virtualenv    #
 # --------------------------------------------------------------------------- #
-FROM python:3.13.1-slim-bookworm AS builder
+FROM python:3.13.15-slim-bookworm@sha256:c45a22ea000adfd9cda29364bbe7edd23001ce5cc2ad15857cfbf7766943b9ca AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -21,7 +25,7 @@ RUN pip install --require-virtualenv -r requirements.lock
 # --------------------------------------------------------------------------- #
 # Runtime — slim, non-root, runtime dependencies only                         #
 # --------------------------------------------------------------------------- #
-FROM python:3.13.1-slim-bookworm AS runtime
+FROM python:3.13.15-slim-bookworm@sha256:c45a22ea000adfd9cda29364bbe7edd23001ce5cc2ad15857cfbf7766943b9ca AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
