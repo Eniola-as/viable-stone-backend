@@ -29,7 +29,7 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 | 9 | Catalogue + price history | ✅ | 28 tests — CI uniqueness, SKU/barcode, price history, cost-free employee output. |
 | 10 | Suppliers, restocking, balances, weighted-avg cost, movements | ✅ | 36 tests incl. 2 real-thread PostgreSQL concurrency tests. |
 | 11 | Ordinary fully-paid sales + split payments | ✅ | Customer/ReceiptSequence/Sale/SaleItem/Payment; `create_sale` (11-step atomic, idempotent); cash/transfer/POS/split; per-branch-day receipt numbering; sales list + cashier "own sales" rule; customer API (phone masked in lists). 37 tests incl. 2 real-thread concurrency (idempotency + no oversell). |
-| 12 | Receipt numbering + printable/PDF receipts | 🔄 | Receipt numbering done in Stage 11; HTML/PDF rendering pending. |
+| 12 | Receipt numbering + printable/PDF receipts | ✅ | A4 paid-receipt PDF (reportlab, no system deps) + JSON receipt, both from immutable snapshots. `GET /sales/{id}/receipt.pdf` (exact `Content-Type: application/pdf`, `Cache-Control: private, no-store`) + `/receipt/`, same role+branch scoping (cross-branch → 404). No cost/profit/DB-id/audit data. Currency shown as `NGN` (built-in fonts lack ₦; a non-Latin-1 symbol falls back). Business identity in `settings.BUSINESS_IDENTITY` only. Multi-page: header/columns repeat, "Page N" footer, long text wraps. 20 tests. |
 | 13 | Expenses + profit reports | ⏳ | |
 | 14 | Discounts, approvals, rare returns, refunds, protected adjustments | ⏳ | |
 | 15 | Notifications | ⏳ | |
@@ -39,25 +39,29 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 
 ## Git checkpoints
 
-- `985233f` — **Stages 1–10** (config, accounts+MFA, catalogue, inventory).
-  Branch `setup/backend-foundation`. 127 files. `.env` excluded (git-ignored);
-  `openapi.yml` and `docs/PROGRESS.md` committed.
+- `985233f` — **Stages 1–10** (config, accounts+MFA, catalogue, inventory). 127 files.
+- `7a04860` — docs: 112-test collection + estimate note.
+- `27d9d2e` — **Stage 11** (fully-paid sales, split payments, receipt numbering).
+- Branch `setup/backend-foundation`. `.env` excluded (git-ignored); `openapi.yml`
+  and `docs/PROGRESS.md` committed in each.
 
-## Test suite — 2026-08-27 (Stages 1–10, CREATEDB granted)
+## Test suite — 2026-08-27 (through Stage 12)
 
 ```
-pytest --collect-only -q  -> 112 tests collected
-pytest --create-db        -> 112 passed, 0 failed, 0 skipped   (PostgreSQL 18)
-coverage                  -> 92% lines
+pytest --collect-only -q  -> 169 tests collected
+pytest --create-db        -> 169 passed, 0 failed, 0 skipped   (PostgreSQL 18)
+coverage                  -> 93% lines
 ruff check .              -> All checks passed
 ruff format --check .     -> clean
 manage.py check           -> 0 issues
 makemigrations --check    -> No changes detected
-spectacular --validate    -> exit 0, 0 warnings, 0 errors (openapi.yml, ~103 KB)
+spectacular --validate    -> exit 0, 0 warnings, 0 errors (openapi.yml, ~124 KB)
 check --deploy (prod)     -> 0 issues
+pip-audit                 -> 7 findings, all in `pip` itself (25.2; upgrade pip).
+                             Project runtime deps are clean.
 ```
 
-### Collected test inventory (112)
+### Collected test inventory (169, through Stage 12)
 
 | File | Tests |
 |---|---|
@@ -73,9 +77,15 @@ check --deploy (prod)     -> 0 issues
 | inventory/tests/test_restock.py | 5 |
 | inventory/tests/test_stock_count.py | 5 |
 | inventory/tests/test_weighted_cost.py | 7 |
-| **Total** | **112** |
+| sales/tests/test_create_sale.py | 19 |
+| sales/tests/test_sales_api.py | 16 |
+| sales/tests/test_receipts.py | 20 |
+| sales/tests/test_concurrency.py | 2 |
+| **Total** | **169** |
 
-### Why the earlier estimate said ~124
+(Stages 1–10 alone: 112.)
+
+### Why the earlier Stage-10 estimate said ~124
 
 The "~124" figure was an **informal running tally stated before the suite could
 execute** (test DB was blocked on `CREATEDB`). It was approximate for concrete
@@ -160,3 +170,28 @@ report 112, 0 skipped:
   (`client_sale_id`) so a retry never duplicates a sale or a stock reduction.
   Customer optional (walk-in creates no row; phone masked in broad lists).
   Full suite: **149 passed**. `openapi.yml` regenerated + validated (0 warn/err).
+  Committed as `27d9d2e`.
+- 2026-08-27: Stage 12 — A4 paid-receipt PDF. `reportlab` added (pure Python, no
+  system libs). `apps/sales/services/receipts.py`: `receipt_context(sale)` (shared
+  data) + `render_receipt_pdf(sale)`, both built only from `SaleItem`/`Payment`
+  snapshots. Shows business identity (from `settings.BUSINESS_IDENTITY` — one
+  place), optional logo, receipt number, Africa/Lagos date-time, branch, cashier,
+  optional customer, per-line qty/unit price/line total, subtotal + total,
+  Cash/Transfer/POS breakdown with tendered + change, and "COMPLETED / PAID".
+  Never emits cost, profit, DB ids or audit data. `GET /api/v1/sales/{id}/receipt/`
+  (JSON) and `/receipt.pdf` (explicit paths so `.pdf` isn't a DRF format suffix) —
+  same `sales_visible_to` scoping, cross-branch → 404, unauthenticated → 401,
+  non-completed sale → 409. Responses carry exact `Content-Type: application/pdf`,
+  `Cache-Control: private, no-store`, `Content-Length`, `X-Content-Type-Options:
+  nosniff` and `Content-Disposition: inline; filename="<receipt-no>.pdf"`.
+  Currency = `NGN` (built-in PDF fonts have no ₦ glyph; a non-Latin-1
+  `BUSINESS_CURRENCY_SYMBOL` is downgraded to `NGN` with a logged warning).
+  Layout hardened for multi-page — `wordWrap="CJK"` cells (no clipping), items
+  header `repeatRows=1`, "Page N" footer every page; verified by generating a
+  representative 4-page receipt (real logo, 40 long-description lines, 3-way split
+  payment, long branch name/address, customer) and inspecting the per-page
+  extracted text. 20 tests incl. snapshot stability, logo embedding, exact
+  Content-Type, Cache-Control, currency render+extract, ₦→NGN fallback and the
+  multi-page structure. Full battery green: **169 passed**, 93% coverage,
+  `openapi.yml` regenerated + validated (0 warn/err). `pip-audit`: only `pip`
+  itself. `pypdf` added as a dev dep for PDF text assertions.

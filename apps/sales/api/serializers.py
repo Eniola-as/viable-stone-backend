@@ -170,3 +170,58 @@ class SaleReadSerializer(serializers.ModelSerializer):
             else SaleItemReadSerializer
         )
         return serializer_cls(sale.items.all(), many=True).data
+
+
+# --------------------------------------------------------------------------- #
+# Receipt (JSON) — documents the shape of receipt_context(); no cost / ids     #
+# --------------------------------------------------------------------------- #
+
+
+class _BusinessSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    phone = serializers.CharField(allow_blank=True)
+    email = serializers.CharField(allow_blank=True)
+    address = serializers.CharField(allow_blank=True)
+
+
+class _ReceiptItemSerializer(serializers.Serializer):
+    description = serializers.CharField()
+    sku = serializers.CharField()
+    quantity = serializers.IntegerField()
+    unit_price = serializers.CharField()
+    line_total = serializers.CharField()
+
+
+class _ReceiptPaymentSerializer(serializers.Serializer):
+    method = serializers.CharField()
+    label = serializers.CharField()
+    amount = serializers.CharField()
+    reference = serializers.CharField(allow_blank=True)
+    tendered = serializers.CharField(required=False)
+    change = serializers.CharField(required=False)
+
+
+class _ReceiptPartySerializer(serializers.Serializer):
+    name = serializers.CharField(allow_blank=True)
+    code = serializers.CharField(required=False)
+    phone = serializers.CharField(required=False, allow_blank=True)
+
+
+class ReceiptSerializer(serializers.Serializer):
+    business = _BusinessSerializer()
+    currency = serializers.CharField()
+    receipt_number = serializers.CharField()
+    issued_at = serializers.CharField()
+    issued_at_iso = serializers.DateTimeField()
+    branch = _ReceiptPartySerializer()
+    cashier = serializers.CharField()
+    customer = _ReceiptPartySerializer(allow_null=True)
+    items = _ReceiptItemSerializer(many=True)
+    subtotal = serializers.CharField()
+    discount_total = serializers.CharField()
+    total = serializers.CharField()
+    payments = _ReceiptPaymentSerializer(many=True)
+    cash_tendered = serializers.CharField(allow_null=True)
+    change_due = serializers.CharField()
+    status = serializers.CharField()
+    status_label = serializers.CharField()

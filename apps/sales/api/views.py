@@ -1,17 +1,22 @@
+from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.response import Response
 
+from apps.core.exceptions import Conflict
 from apps.core.permissions import IsAuthenticatedAndMFAVerified
 from apps.sales.api.serializers import (
     CustomerListSerializer,
     CustomerSerializer,
+    ReceiptSerializer,
     SaleCreateSerializer,
     SaleReadSerializer,
 )
-from apps.sales.models import Customer, Sale
+from apps.sales.models import Customer, Sale, SaleStatus
 from apps.sales.selectors import sales_visible_to
 from apps.sales.services.customers import resolve_customer
+from apps.sales.services.receipts import receipt_context, render_receipt_pdf
 from apps.sales.services.sales import CartLine, PaymentLine, create_sale
 
 
@@ -72,6 +77,42 @@ class SaleViewSet(
         )
         out = SaleReadSerializer(sale, context={"request": request})
         return Response(out.data, status=status.HTTP_201_CREATED)
+
+    def _completed_sale_or_conflict(self):
+        sale = self.get_object()  # 404 via sales_visible_to (role + branch)
+        if sale.status != SaleStatus.COMPLETED:
+            raise Conflict(
+                "A receipt is only available for a completed sale.",
+                code="receipt_unavailable",
+            )
+        return sale
+
+    @extend_schema(
+        responses={200: ReceiptSerializer},
+        summary="Structured receipt (snapshot data, no cost)",
+        tags=["Sales"],
+    )
+    def receipt(self, request, pk=None):
+        response = Response(receipt_context(self._completed_sale_or_conflict()))
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    @extend_schema(
+        responses={(200, "application/pdf"): OpenApiTypes.BINARY},
+        summary="A4 paid-receipt PDF",
+        tags=["Sales"],
+    )
+    def receipt_pdf(self, request, pk=None):
+        sale = self._completed_sale_or_conflict()
+        pdf = render_receipt_pdf(sale)
+        response = HttpResponse(pdf, content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'inline; filename="{sale.receipt_number}.pdf"'
+        )
+        response["Content-Length"] = str(len(pdf))
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, no-store"
+        return response
 
 
 @extend_schema_view(

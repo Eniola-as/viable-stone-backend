@@ -344,3 +344,15 @@ LOGGING = {
 CURRENCY_CODE = "NGN"
 MONEY_DECIMAL_PLACES = 2
 OFFLINE_AUTHORIZATION_MAX_HOURS = 24
+
+# Single source of truth for the shop's identity on printed documents
+# (receipts). Never hard-code any of this inside a template.
+BUSINESS_IDENTITY = {
+    "name": env("BUSINESS_NAME", default="Viable Stone Paints & Coatings Enterprise"),
+    "phone": env("BUSINESS_PHONE", default=""),
+    "email": env("BUSINESS_EMAIL", default=""),
+    "address": env("BUSINESS_ADDRESS", default=""),
+    # Absolute path, or relative to BASE_DIR, to a logo image (PNG/JPG).
+    "logo_path": env("BUSINESS_LOGO_PATH", default=""),
+    "currency_symbol": env("BUSINESS_CURRENCY_SYMBOL", default="NGN"),
+}

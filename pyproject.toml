@@ -22,6 +22,7 @@ dependencies = [
     "Pillow",
     "django-axes",
     "pywebpush",
+    "reportlab>=4.2,<5",
     "gunicorn",
     "whitenoise",
     "sentry-sdk[django]",
@@ -34,6 +35,7 @@ dev = [
     "pytest-cov",
     "factory-boy",
     "freezegun",
+    "pypdf",
     "ruff",
     "pip-audit",
 ]

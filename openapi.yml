@@ -1534,6 +1534,51 @@ paths:
               schema:
                 $ref: '#/components/schemas/SaleRead'
           description: ''
+  /api/v1/sales/{id}/receipt/:
+    get:
+      operationId: sales_receipt_retrieve
+      summary: Structured receipt (snapshot data, no cost)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Sales
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+          description: ''
+  /api/v1/sales/{id}/receipt.pdf:
+    get:
+      operationId: sales_receipt.pdf_retrieve
+      summary: A4 paid-receipt PDF
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Sales
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          description: ''
   /api/v1/stock-counts/:
     get:
       operationId: stock_counts_list
@@ -3934,6 +3979,69 @@ components:
       - category
       - kind
       - name
+    Receipt:
+      type: object
+      properties:
+        business:
+          $ref: '#/components/schemas/_Business'
+        currency:
+          type: string
+        receipt_number:
+          type: string
+        issued_at:
+          type: string
+        issued_at_iso:
+          type: string
+          format: date-time
+        branch:
+          $ref: '#/components/schemas/_ReceiptParty'
+        cashier:
+          type: string
+        customer:
+          allOf:
+          - $ref: '#/components/schemas/_ReceiptParty'
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/_ReceiptItem'
+        subtotal:
+          type: string
+        discount_total:
+          type: string
+        total:
+          type: string
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/_ReceiptPayment'
+        cash_tendered:
+          type: string
+          nullable: true
+        change_due:
+          type: string
+        status:
+          type: string
+        status_label:
+          type: string
+      required:
+      - branch
+      - business
+      - cash_tendered
+      - cashier
+      - change_due
+      - currency
+      - customer
+      - discount_total
+      - issued_at
+      - issued_at_iso
+      - items
+      - payments
+      - receipt_number
+      - status
+      - status_label
+      - subtotal
+      - total
     RecoveryCodeRequest:
       type: object
       properties:
@@ -4673,6 +4781,72 @@ components:
       - phone
       - role
       - username
+    _Business:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        address:
+          type: string
+      required:
+      - address
+      - email
+      - name
+      - phone
+    _ReceiptItem:
+      type: object
+      properties:
+        description:
+          type: string
+        sku:
+          type: string
+        quantity:
+          type: integer
+        unit_price:
+          type: string
+        line_total:
+          type: string
+      required:
+      - description
+      - line_total
+      - quantity
+      - sku
+      - unit_price
+    _ReceiptParty:
+      type: object
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        phone:
+          type: string
+      required:
+      - name
+    _ReceiptPayment:
+      type: object
+      properties:
+        method:
+          type: string
+        label:
+          type: string
+        amount:
+          type: string
+        reference:
+          type: string
+        tendered:
+          type: string
+        change:
+          type: string
+      required:
+      - amount
+      - label
+      - method
+      - reference
   securitySchemes:
     cookieAuth:
       type: apiKey
