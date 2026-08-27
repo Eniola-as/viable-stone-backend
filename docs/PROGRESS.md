@@ -33,7 +33,7 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 | 13 | Expenses + profit reports | ✅ | `ExpenseCategory` (CI-unique per branch) + `Expense` (amount > 0 CHECK, `receipt_file`). `void_expense` service: owner-only, once-only, requires a reason, preserves the original amount, audited. Owner APIs `/expense-categories/`, `/expenses/` (+ `void` action, no delete → 405, amount immutable after create). `/reports/` (owner-only): `profit` (revenue = Σ completed-sale totals, COGS = Σ qty·unit_cost_snapshot, gross, net = gross − non-voided expenses; Africa/Lagos `today`/`week`/`month`/`custom` ranges, end-inclusive), `best-sellers`, `slow-movers`, `inventory` (stock value + low-stock). 24 tests (freezegun-dated). |
 | 14 | Discounts, approvals, rare returns, refunds, protected adjustments | ✅ | **14A:** `ApprovalRequest`, `SaleReturn` (unique `(branch, client_return_id)`), `SaleReturnItem` (+`condition` RESELLABLE / DAMAGED_OR_OPENED), `Refund` (`issued_by`, amount>0). `submit_return_request` / `reject_return` / `approve_return` (owner-only, atomic, `select_for_update`, idempotent via `client_return_id`, ≤ sold−returned, original price+cost snapshots, RESELLABLE → `RETURN` movement + reverse COGS / DAMAGED → no restore, sale → PARTIALLY_RETURNED/RETURNED, receipt untouched). `adjust_stock` (owner, direction+positive qty+detailed reason, never negative, `select_for_update`, idempotent, audit before/after). `profit_report`/`best_sellers` net approved returns. **14B:** internal DRAFT sale (`create_draft_sale` — no payment/receipt/movement/report), `replace_draft_cart` (auto-supersedes a pending discount), `request_discount` (cashier, fixed Naira, reason, 0 < amount < subtotal), `approve_discount`/`reject_discount` (owner only), `finalise_draft` (atomic + idempotent + `select_for_update`; re-checks stock & active prices via a draft fingerprint → `approval_stale`; allocates the fixed discount across items in kobo by largest-remainder so parts sum exactly; cost snapshot taken at finalisation; payments == subtotal − discount; assigns receipt number). Discounted returns refund **net of discount** with a running kobo allocation (partial returns never over-refund; full return == final amount paid). Receipt shows Subtotal / Discount / Final total (PDF + JSON). APIs: `/sales/drafts/`, `/sales/{id}/{draft-cart,discount-requests,finalise,cancel}/`, polymorphic `/approvals/{id}/{approve,reject}/`, `/sales/{id}/return-requests/`, `/returns/`, `/inventory/adjustments/`. 83 tests incl. 3 real-thread PostgreSQL concurrency (approve-once, adjust-once, finalise-once). |
 | 15 | Notifications | ✅ | Durable in-app `Notification` (recipient, branch, type, safe title/message, `is_read`/`read_at`, safe `related_object_type`/`id`, allowlisted `action_path`, `dedupe_key`; unique `(recipient, dedupe_key)`) + `PushSubscription` (unique `(user, endpoint)`, upsert, `failure_count`/`expired_at`). Every alert writes (and de-dupes) the durable row **inside the business transaction** — a rollback removes the change and the notification together, and a `(recipient, dedupe_key)` race is absorbed in a savepoint without poisoning that transaction; only the external Web Push is deferred to `transaction.on_commit` and a push failure never touches the business txn. **Central stock detection:** `write_movement` emits `stock_balance_changed` while the balance is locked; one receiver classifies OK/LOW/OUT vs `variant.low_stock_level` and alerts branch owners only on a level *change* into LOW or OUT — never repeatedly while low/out, direct drop to 0 sends only OUT_OF_STOCK, recovery resets the cycle, OUT→still-low sends one LOW_STOCK. Works identically through sales, returns, restocks, stock counts and protected adjustments. **Approvals:** submitting a discount/return request notifies active branch owners (not the requester); the decision notifies the requester (never self). APIs: `/notifications/` (list, `unread-count`, `{id}/read/`, `read-all/` — all own-only, cross-user/branch → 404, mark-read idempotent, no create/edit/delete), `/push-subscriptions/` (upsert-create, list, `{id}/deactivate/`, delete — own-only, HTTPS-or-localhost + key-length validation, rate-limited `notifications_write`), `/push-subscriptions/public-key/` (public VAPID key only). `p256dh`/`auth` never appear in any response body or `openapi.yml` response schema; private VAPID key is env-only, never in APIs/logs/openapi; `.env.example` uses illustrative placeholders only. 94 tests incl. real-thread PostgreSQL dedupe concurrency, in-transaction-row + rollback-removes-both, dedupe-race isolation, push-failure isolation, and protected-field-leak checks. |
-| 16 | One-device offline fixed-price checkout + idempotent sync | ⏳ | |
+| 16 | One-device offline fixed-price checkout + idempotent sync | ✅ | `accounts.OfflineDeviceAuthorization` binds one `RegisteredDevice` + branch + cashier + a versioned **signed** catalogue snapshot (active variants: name/SKU/fixed price/qty/low-stock — no cost, credentials, secret or customer data) + a ≤24h window (`OFFLINE_AUTHORIZATION_MAX_HOURS`). One ACTIVE per branch = the exclusive offline session: `assert_no_active_offline_session` makes online `create_sale`/`finalise_draft`/`adjust_stock`/`apply_stock_count` return `409 offline_session_active` until the owner ends it. Signing via `django.core.signing` (HMAC-SHA256 + `constant_time_compare`); `OFFLINE_SIGNING_KEY` env-only. **Sync** (`POST /offline/sync/`, device-bound by the signed token, cashier-auth): sales processed in device-sequence order, **every price/total recomputed from the signed snapshot** (client prices/totals/discounts/costs never trusted), each sale atomic, one outcome per sale — `ACCEPTED` / `DUPLICATE` / `CONFLICT` / `REJECTED` / `OWNER_REVIEW_REQUIRED` — in `sales.OfflineSaleSyncRecord` (unique `(branch, client_sale_id)` = idempotency + retry backstop). Stock conflicts and revoked/replaced/force-closed sessions are **retained** for owner review, never discarded, never negative, never partial. Accepted sales reuse `create_sale` with `source=OFFLINE` + `fixed_prices` + original `completed_at`, so they feed inventory / reports / receipts / notifications normally; official receipt number assigned on sync (temporary receipt is labelled `OFFLINE RECEIPT — PENDING SYNCHRONIZATION`, no number). Offline `Payment.offline_confirmed=True` (physically confirmed, not electronically verified); TRANSFER/POS require a reference. APIs: `/offline/devices/` (owner+MFA register/replace/revoke), `/offline/authorizations/` (owner+MFA issue/replace/revoke/`end-session` — force-end needs `mfa_confirmed`; `status/` gives expiry + pending count), `/offline/sync/`, `/offline/temporary-receipt/`, `/offline/sync-records/` (+ owner `resolve`), `/offline/sales/{client_sale_id}/` mapping. Cross-device/branch → 404; tampered/duplicate-sequence/outside-window payloads rejected; batch-size limit + `offline_sync` throttle; no token/phone/reference/secret in logs, responses or `openapi.yml`. 61 tests incl. 2 real-thread PostgreSQL concurrency (identical batches → one Sale; competing batches never oversell). |
 | 17 | Security hardening, CI, monitoring, deployment, backup/restore docs | ⏳ | Redis required. |
 | 18 | Acceptance tests + final OpenAPI contract | ⏳ | |
 
@@ -47,17 +47,21 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 - `1211ca0` — **Stage 14A** (returns, refunds, protected stock adjustments).
 - `8243e7f` — **Stage 14B** — owner-approved fixed-Naira discount workflow
   (completes Stage 14).
-- **Stage 15** — notifications (durable in-app `Notification` + best-effort Web
-  Push; central low/out-of-stock transition detection; approval-workflow alerts).
+- `2f64157` — **Stage 15** — notifications (durable in-app `Notification` +
+  best-effort Web Push; central low/out-of-stock transition detection;
+  approval-workflow alerts).
+- **Stage 16** — one-device offline fixed-price checkout + idempotent sync
+  (signed catalogue snapshot, exclusive session, device-bound batch sync with
+  per-sale outcomes).
 - Branch `setup/backend-foundation`. `.env` excluded (git-ignored); `openapi.yml`
   and `docs/PROGRESS.md` committed in each.
 
-## Test suite — 2026-08-27 (through Stage 15)
+## Test suite — 2026-08-27 (through Stage 16)
 
 ```
-pytest --collect-only -q  -> 370 tests collected
-pytest --create-db        -> 370 passed, 0 failed, 0 skipped   (PostgreSQL 18)
-coverage                  -> 93% lines (apps/notifications 97%)
+pytest --collect-only -q  -> 431 tests collected
+pytest --create-db        -> 431 passed, 0 failed, 0 skipped   (PostgreSQL 18)
+coverage                  -> 93% lines
 ruff check .              -> All checks passed
 ruff format --check .     -> clean
 manage.py check           -> 0 issues
@@ -66,7 +70,7 @@ spectacular --validate --fail-on-warn -> exit 0, 0 warnings, 0 errors (openapi.y
 check --deploy (prod)     -> 0 issues
 ```
 
-### Collected test inventory (370, through Stage 15)
+### Collected test inventory (431, through Stage 16)
 
 | File | Tests |
 |---|---|
@@ -107,12 +111,23 @@ check --deploy (prod)     -> 0 issues
 | notifications/tests/test_transaction_boundary.py | 4 |
 | notifications/tests/test_action_paths.py | 3 |
 | notifications/tests/test_notifications_concurrency.py | 2 |
-| **Total** | **370** |
+| sales/tests/test_offline_api.py | 16 |
+| sales/tests/test_offline_sync.py | 16 |
+| sales/tests/test_offline_authorization.py | 9 |
+| sales/tests/test_offline_security.py | 7 |
+| sales/tests/test_offline_snapshot.py | 6 |
+| sales/tests/test_offline_models.py | 5 |
+| sales/tests/test_offline_concurrency.py | 2 |
+| **Total** | **431** |
 
 Stage 14 is complete: 14A (returns / refunds / protected adjustments) +
 14B (owner-approved fixed-Naira discount on an internal DRAFT sale).
 Stage 15 is complete: durable in-app notifications + best-effort Web Push,
 central low/out-of-stock transition detection, approval-workflow alerts.
+Stage 16 is complete: one authorised offline device per branch, a versioned
+signed catalogue snapshot, an exclusive offline session, and a device-bound
+idempotent batch sync that recomputes every price from the snapshot and
+returns one outcome per sale.
 
 (Stages 1–10 alone: 112.)
 
@@ -344,5 +359,49 @@ report 112, 0 skipped:
   dedupe-race-does-not-poison-transaction, push-failure isolation, and explicit
   protected-field-leak / no-secret-in-schema-openapi-logs checks. Full battery:
   **370 passed**, 93% coverage (apps/notifications 97%); ruff / check /
+  makemigrations --check / check --deploy (prod) clean; `openapi.yml`
+  regenerated + validated (`--fail-on-warn`, 0 warnings / 0 errors).
+- 2026-08-27: **Stage 15** committed as `2f64157`.
+- 2026-08-27: **Stage 16** — one-device offline fixed-price checkout + idempotent
+  sync. New `accounts.OfflineDeviceAuthorization` (binds `RegisteredDevice` +
+  branch + cashier + a versioned signed catalogue snapshot + a ≤24h window;
+  one ACTIVE per branch) and `sales.OfflineSaleSyncRecord` (unique
+  `(branch, client_sale_id)` idempotency/retry backstop; redacted payload for
+  owner review). `sales.Payment` gains `offline_confirmed`. Snapshot build +
+  signing in `sales/services/offline_snapshot.py` via `django.core.signing`
+  (HMAC-SHA256 + `constant_time_compare`); the snapshot carries names / SKUs /
+  fixed prices / quantities / low-stock levels only — never cost, credentials,
+  the signing secret or customer data. `sales/services/offline.py`:
+  `issue`/`replace`/`revoke` authorization, `end_offline_session`
+  (force-end records FORCE_CLOSED + audit), and `sync_offline_batch` —
+  sales processed in device-sequence order; every price and total recomputed
+  from the signed snapshot (client prices / totals / discounts / costs never
+  trusted); each sale atomic; one outcome per sale
+  (ACCEPTED / DUPLICATE / CONFLICT / REJECTED / OWNER_REVIEW_REQUIRED). Accepted
+  sales reuse `create_sale` (new `fixed_prices` / `completed_at` /
+  `business_date` / `payments_confirmed_offline` params, `source=OFFLINE`) so
+  they feed inventory / reports / receipts / low-stock notifications normally;
+  the official receipt number is assigned at sync, the on-device temporary
+  receipt is labelled `OFFLINE RECEIPT — PENDING SYNCHRONIZATION` with no
+  number. Stock conflicts and revoked/replaced/force-closed authorizations are
+  retained for owner resolution — never discarded, never negative, never
+  partial. **Exclusive session:** `accounts.services.offline_session.
+  assert_no_active_offline_session` makes online `create_sale` /
+  `finalise_draft` / `adjust_stock` / `apply_stock_count` return
+  `409 offline_session_active` while a branch has an ACTIVE authorization.
+  APIs under `/api/v1/offline/`: `devices/` (owner+MFA register / `replace` /
+  `revoke`), `authorizations/` (owner+MFA create / `revoke` / `replace` /
+  `end-session` — force-end requires `mfa_confirmed`; `status/` = expiry +
+  pending count), `sync/` (device-bound by signed token, cashier-auth,
+  `offline_sync` throttle, batch-size limit), `temporary-receipt/`,
+  `sync-records/` (owner list + `resolve`), `sales/{client_sale_id}/`
+  (official Sale + receipt mapping). Cross-device / cross-branch → 404;
+  tampered / duplicate-sequence / outside-window payloads rejected;
+  `OFFLINE_SIGNING_KEY` + `OFFLINE_SYNC_MAX_BATCH` env-only (`.env.example`
+  placeholders); no signing secret, authorization token, payment reference or
+  customer phone in logs, API responses or `openapi.yml`. 61 tests incl. 2
+  real-thread PostgreSQL concurrency tests (identical batches → one Sale / one
+  receipt; competing batches for scarce stock never oversell). Full battery:
+  **431 passed** (PostgreSQL 18), 93% coverage; ruff / check /
   makemigrations --check / check --deploy (prod) clean; `openapi.yml`
   regenerated + validated (`--fail-on-warn`, 0 warnings / 0 errors).

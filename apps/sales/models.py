@@ -212,6 +212,9 @@ class Payment(UUIDModel):
         max_digits=14, decimal_places=2, null=True, blank=True
     )
     reference = models.CharField(max_length=150, blank=True)
+    # True for offline-synced payments: physically confirmed by the cashier at
+    # the till, never electronically verified by this system.
+    offline_confirmed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -380,3 +383,81 @@ class Refund(UUIDModel):
 
     def __str__(self):
         return f"Refund {self.method} {self.amount}"
+
+
+# --------------------------------------------------------------------------- #
+# Offline fixed-price checkout — synchronisation ledger                       #
+# --------------------------------------------------------------------------- #
+
+
+class OfflineSyncOutcome(models.TextChoices):
+    ACCEPTED = "ACCEPTED", "Accepted — official Sale created"
+    DUPLICATE = "DUPLICATE", "Duplicate — already synced"
+    CONFLICT = "CONFLICT", "Conflict — retained for owner resolution"
+    REJECTED = "REJECTED", "Rejected — invalid payload"
+    OWNER_REVIEW_REQUIRED = "OWNER_REVIEW_REQUIRED", "Owner review required"
+
+
+class OfflineSaleSyncRecord(BaseModel):
+    """One row per submitted offline sale — the idempotency and audit ledger.
+
+    ``(branch, client_sale_id)`` is unique: it is the database backstop that
+    makes batch retries safe and lets conflicts be retained rather than
+    discarded. ``redacted_payload`` keeps enough for an owner to resolve a
+    conflict but never a payment reference or a customer phone number.
+    """
+
+    branch = models.ForeignKey(
+        "accounts.Branch",
+        on_delete=models.PROTECT,
+        related_name="offline_sync_records",
+    )
+    authorization = models.ForeignKey(
+        "accounts.OfflineDeviceAuthorization",
+        on_delete=models.PROTECT,
+        related_name="sync_records",
+    )
+    device = models.ForeignKey(
+        "accounts.RegisteredDevice",
+        on_delete=models.PROTECT,
+        related_name="offline_sync_records",
+    )
+    client_sale_id = models.UUIDField()
+    device_sequence = models.PositiveIntegerField()
+    offline_created_at = models.DateTimeField()
+    outcome = models.CharField(max_length=24, choices=OfflineSyncOutcome.choices)
+    detail_code = models.CharField(max_length=60, blank=True)
+    redacted_payload = models.JSONField(default=dict, blank=True)
+    sale = models.OneToOneField(
+        Sale,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="offline_sync_record",
+    )
+    resolved = models.BooleanField(default=False)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="offline_sync_records_resolved",
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolution_note = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        ordering = ["device_sequence", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["branch", "client_sale_id"],
+                name="offlinesyncrecord_unique_branch_client_id",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["branch", "outcome"]),
+            models.Index(fields=["authorization", "device_sequence"]),
+        ]
+
+    def __str__(self):
+        return f"OfflineSync {self.client_sale_id} ({self.outcome})"

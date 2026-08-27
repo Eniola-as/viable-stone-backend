@@ -464,6 +464,10 @@ def finalise_draft(
             "Only an approved draft can be finalised.", code="not_finalisable"
         )
 
+    from apps.accounts.services.offline_session import assert_no_active_offline_session
+
+    assert_no_active_offline_session(locked.branch)
+
     approval = (
         ApprovalRequest.objects.filter(
             sale=locked,

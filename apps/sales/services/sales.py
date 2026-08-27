@@ -113,8 +113,8 @@ def validate_payments(payments: list[PaymentLine], total: Decimal) -> Decimal:
     return to_money(change_due)
 
 
-def next_receipt_number(branch) -> str:
-    business_date = timezone.localdate()
+def next_receipt_number(branch, business_date=None) -> str:
+    business_date = business_date or timezone.localdate()
     sequence, _ = ReceiptSequence.objects.select_for_update().get_or_create(
         branch=branch, business_date=business_date, defaults={"last_number": 0}
     )
@@ -143,6 +143,10 @@ def create_sale(
     source: str = SaleSource.ONLINE,
     approved_discount: Decimal = ZERO,
     client_total: Decimal | None = None,  # accepted, never trusted
+    fixed_prices: dict | None = None,  # {str(variant_id): price} from a signed snapshot
+    completed_at=None,  # true sale time (offline sales keep their original time)
+    business_date=None,  # receipt-number day (defaults to today)
+    payments_confirmed_offline: bool = False,
     request=None,
 ) -> Sale:
     # --- Idempotency ---------------------------------------------------- #
@@ -154,6 +158,16 @@ def create_sale(
             "A sale with this reference is already in progress.",
             code="sale_in_progress",
         )
+
+    # --- Exclusive offline session --------------------------------- #
+    # An online sale cannot run while the branch's offline till is authorised.
+    # The offline sync path itself passes source=OFFLINE and is exempt.
+    if source != SaleSource.OFFLINE:
+        from apps.accounts.services.offline_session import (
+            assert_no_active_offline_session,
+        )
+
+        assert_no_active_offline_session(branch)
 
     # --- Cashier / branch -------------------------------------------- #
     if not cashier.is_active:
@@ -188,12 +202,24 @@ def create_sale(
                 f"{variant.sku} is not available for sale.",
                 code="variant_unavailable",
             )
-        price_row = current_price(variant)
-        if price_row is None:
-            raise APIError(
-                f"No active selling price is set for {variant.sku}.",
-                code="price_not_set",
-            )
+        if fixed_prices is not None:
+            # Offline sync: prices are fixed by the authorised signed snapshot
+            # and never recomputed from the live catalogue.
+            snapshot_price = fixed_prices.get(str(variant_id))
+            if snapshot_price is None:
+                raise APIError(
+                    f"{variant.sku} is not in the authorised catalogue snapshot.",
+                    code="price_not_in_snapshot",
+                )
+            unit_price = to_money(snapshot_price)
+        else:
+            price_row = current_price(variant)
+            if price_row is None:
+                raise APIError(
+                    f"No active selling price is set for {variant.sku}.",
+                    code="price_not_set",
+                )
+            unit_price = to_money(price_row.amount)
         balance = balances[variant_id]
         if balance.quantity < quantity:
             raise APIError(
@@ -205,7 +231,7 @@ def create_sale(
             _Priced(
                 variant=variant,
                 quantity=quantity,
-                unit_price=to_money(price_row.amount),
+                unit_price=unit_price,
                 unit_cost=to_money(balance.average_unit_cost),
                 balance=balance,
             )
@@ -273,6 +299,7 @@ def create_sale(
                     else None
                 ),
                 reference=pay.reference or "",
+                offline_confirmed=payments_confirmed_offline,
             )
             for pay in payments
         ]
@@ -289,10 +316,10 @@ def create_sale(
             reference_id=sale.id,
         )
 
-    sale.receipt_number = next_receipt_number(branch)
+    sale.receipt_number = next_receipt_number(branch, business_date=business_date)
     sale.change_due = change_due
     sale.status = SaleStatus.COMPLETED
-    sale.completed_at = timezone.now()
+    sale.completed_at = completed_at or timezone.now()
     sale.save(
         update_fields=[
             "receipt_number",

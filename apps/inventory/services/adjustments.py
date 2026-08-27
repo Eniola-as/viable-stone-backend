@@ -49,6 +49,10 @@ def adjust_stock(
             field_errors={"reason": [f"At least {_MIN_REASON} characters."]},
         )
 
+    from apps.accounts.services.offline_session import assert_no_active_offline_session
+
+    assert_no_active_offline_session(branch)
+
     def _already_applied():
         return StockMovement.objects.filter(
             branch=branch,

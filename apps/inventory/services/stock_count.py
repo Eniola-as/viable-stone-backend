@@ -52,6 +52,10 @@ def apply_stock_count(
     if locked.status == StockCountStatus.CANCELLED:
         raise Conflict("This stock count was cancelled.", code="stock_count_cancelled")
 
+    from apps.accounts.services.offline_session import assert_no_active_offline_session
+
+    assert_no_active_offline_session(locked.branch)
+
     items = list(locked.items.select_related("variant").order_by("variant_id"))
     if not items:
         raise APIError("This stock count has no items.", code="stock_count_empty")

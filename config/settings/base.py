@@ -361,6 +361,12 @@ CURRENCY_CODE = "NGN"
 MONEY_DECIMAL_PLACES = 2
 OFFLINE_AUTHORIZATION_MAX_HOURS = 24
 
+# Offline fixed-price checkout. The signing key is a server-side secret used to
+# sign the catalogue authorization package; it is read only from the
+# environment and falls back to SECRET_KEY (also env-only) when unset.
+OFFLINE_SIGNING_KEY = env("OFFLINE_SIGNING_KEY", default=SECRET_KEY)
+OFFLINE_SYNC_MAX_BATCH = env.int("OFFLINE_SYNC_MAX_BATCH", default=200)
+
 # Single source of truth for the shop's identity on printed documents
 # (receipts). Never hard-code any of this inside a template.
 BUSINESS_IDENTITY = {

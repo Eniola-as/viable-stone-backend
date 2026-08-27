@@ -1748,6 +1748,545 @@ paths:
               schema:
                 $ref: '#/components/schemas/UnreadCount'
           description: ''
+  /api/v1/offline/authorizations/:
+    get:
+      operationId: offline_authorizations_list
+      summary: List offline authorizations
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Offline
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOfflineAuthorizationList'
+          description: ''
+    post:
+      operationId: offline_authorizations_create
+      summary: Authorise the offline session (owner + MFA)
+      tags:
+      - Offline
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfflineAuthorizationCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OfflineAuthorizationCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OfflineAuthorizationCreateRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineAuthorization'
+          description: ''
+  /api/v1/offline/authorizations/{id}/:
+    get:
+      operationId: offline_authorizations_retrieve
+      summary: Retrieve an offline authorization
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this offline device authorization.
+        required: true
+      tags:
+      - Offline
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineAuthorization'
+          description: ''
+  /api/v1/offline/authorizations/{id}/end-session/:
+    post:
+      operationId: offline_authorizations_end_session_create
+      summary: End the offline session (force-end needs MFA confirmation)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this offline device authorization.
+        required: true
+      tags:
+      - Offline
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfflineSessionEndRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OfflineSessionEndRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OfflineSessionEndRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineAuthorization'
+          description: ''
+  /api/v1/offline/authorizations/{id}/replace/:
+    post:
+      operationId: offline_authorizations_replace_create
+      summary: Replace an offline authorization (owner + MFA)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this offline device authorization.
+        required: true
+      tags:
+      - Offline
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfflineAuthorizationReplaceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OfflineAuthorizationReplaceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OfflineAuthorizationReplaceRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineAuthorization'
+          description: ''
+  /api/v1/offline/authorizations/{id}/revoke/:
+    post:
+      operationId: offline_authorizations_revoke_create
+      summary: Revoke an offline authorization (owner + MFA)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this offline device authorization.
+        required: true
+      tags:
+      - Offline
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfflineAuthorizationRevokeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OfflineAuthorizationRevokeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OfflineAuthorizationRevokeRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineAuthorization'
+          description: ''
+  /api/v1/offline/authorizations/{id}/status/:
+    get:
+      operationId: offline_authorizations_status_retrieve
+      summary: Authorization expiry and pending-sync count
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this offline device authorization.
+        required: true
+      tags:
+      - Offline
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineAuthorizationStatus'
+          description: ''
+  /api/v1/offline/devices/:
+    get:
+      operationId: offline_devices_list
+      summary: List offline devices (owner)
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Offline
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOfflineDeviceList'
+          description: ''
+    post:
+      operationId: offline_devices_create
+      summary: Register the branch's offline device (owner + MFA)
+      tags:
+      - Offline
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfflineDeviceCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OfflineDeviceCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OfflineDeviceCreateRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineDevice'
+          description: ''
+  /api/v1/offline/devices/{id}/:
+    get:
+      operationId: offline_devices_retrieve
+      summary: Retrieve an offline device
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this registered device.
+        required: true
+      tags:
+      - Offline
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineDevice'
+          description: ''
+  /api/v1/offline/devices/{id}/replace/:
+    post:
+      operationId: offline_devices_replace_create
+      summary: Replace an offline device (owner + MFA)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this registered device.
+        required: true
+      tags:
+      - Offline
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfflineDeviceCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OfflineDeviceCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OfflineDeviceCreateRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineDevice'
+          description: ''
+  /api/v1/offline/devices/{id}/revoke/:
+    post:
+      operationId: offline_devices_revoke_create
+      summary: Revoke an offline device (owner + MFA)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this registered device.
+        required: true
+      tags:
+      - Offline
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineDevice'
+          description: ''
+  /api/v1/offline/sales/{client_sale_id}/:
+    get:
+      operationId: offline_sales_retrieve
+      summary: Map a client_sale_id to its official Sale + receipt number
+      parameters:
+      - in: path
+        name: client_sale_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offline
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/offline/sync/:
+    post:
+      operationId: offline_sync_create
+      summary: Synchronise a batch of offline sales (device-bound)
+      tags:
+      - Offline
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfflineSyncRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OfflineSyncRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OfflineSyncRequestRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OfflineSyncResult'
+          description: ''
+  /api/v1/offline/sync-records/:
+    get:
+      operationId: offline_sync_records_list
+      summary: List offline sync records (owner)
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Offline
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOfflineSyncRecordList'
+          description: ''
+  /api/v1/offline/sync-records/{id}/:
+    get:
+      operationId: offline_sync_records_retrieve
+      summary: Retrieve an offline sync record
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this offline sale sync record.
+        required: true
+      tags:
+      - Offline
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineSyncRecord'
+          description: ''
+  /api/v1/offline/sync-records/{id}/resolve/:
+    post:
+      operationId: offline_sync_records_resolve_create
+      summary: Resolve a retained conflict / review record (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this offline sale sync record.
+        required: true
+      tags:
+      - Offline
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfflineSyncRecordResolveRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OfflineSyncRecordResolveRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OfflineSyncRecordResolveRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineSyncRecord'
+          description: ''
+  /api/v1/offline/temporary-receipt/:
+    post:
+      operationId: offline_temporary_receipt_create
+      summary: Build a temporary offline receipt from the signed snapshot
+      tags:
+      - Offline
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfflineTemporaryReceiptRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OfflineTemporaryReceiptRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OfflineTemporaryReceiptRequestRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/v1/products/:
     get:
       operationId: products_list
@@ -4617,6 +5156,373 @@ components:
         * `APPROVAL_REQUESTED` - Approval requested
         * `APPROVAL_APPROVED` - Approval approved
         * `APPROVAL_REJECTED` - Approval rejected
+    OfflineAuthorization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/OfflineAuthorizationStatusEnum'
+          readOnly: true
+        device:
+          type: string
+          format: uuid
+          readOnly: true
+        device_name:
+          type: string
+          readOnly: true
+        cashier:
+          type: string
+          format: uuid
+          readOnly: true
+        cashier_username:
+          type: string
+          readOnly: true
+        snapshot_version:
+          type: integer
+          readOnly: true
+        issued_at:
+          type: string
+          format: date-time
+          readOnly: true
+        expires_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_expired:
+          type: boolean
+          readOnly: true
+        signed_token:
+          type: string
+          readOnly: true
+        ended_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        end_reason:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - cashier
+      - cashier_username
+      - created_at
+      - device
+      - device_name
+      - end_reason
+      - ended_at
+      - expires_at
+      - id
+      - is_expired
+      - issued_at
+      - signed_token
+      - snapshot_version
+      - status
+    OfflineAuthorizationCreateRequest:
+      type: object
+      properties:
+        device:
+          type: string
+          format: uuid
+        cashier:
+          type: string
+          format: uuid
+      required:
+      - cashier
+      - device
+    OfflineAuthorizationReplaceRequest:
+      type: object
+      properties:
+        device:
+          type: string
+          format: uuid
+        cashier:
+          type: string
+          format: uuid
+    OfflineAuthorizationRevokeRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          default: ''
+          maxLength: 300
+    OfflineAuthorizationStatus:
+      type: object
+      properties:
+        authorization_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        is_expired:
+          type: boolean
+        snapshot_version:
+          type: integer
+        synced_count:
+          type: integer
+        pending_review_count:
+          type: integer
+      required:
+      - authorization_id
+      - expires_at
+      - is_expired
+      - pending_review_count
+      - snapshot_version
+      - status
+      - synced_count
+    OfflineAuthorizationStatusEnum:
+      enum:
+      - ACTIVE
+      - CLOSED
+      - FORCE_CLOSED
+      - REVOKED
+      - REPLACED
+      type: string
+      description: |-
+        * `ACTIVE` - Active — offline session running
+        * `CLOSED` - Closed — session ended, all sales synced
+        * `FORCE_CLOSED` - Force-closed by owner with pending sales
+        * `REVOKED` - Revoked
+        * `REPLACED` - Replaced by a newer authorization
+    OfflineDevice:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        device_id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/OfflineDeviceStatusEnum'
+          readOnly: true
+        registered_at:
+          type: string
+          format: date-time
+          readOnly: true
+        last_seen_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - device_id
+      - id
+      - last_seen_at
+      - name
+      - registered_at
+      - revoked_at
+      - status
+    OfflineDeviceCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+      required:
+      - name
+    OfflineDeviceStatusEnum:
+      enum:
+      - ACTIVE
+      - REVOKED
+      - REPLACED
+      type: string
+      description: |-
+        * `ACTIVE` - Active
+        * `REVOKED` - Revoked
+        * `REPLACED` - Replaced
+    OfflineSaleInputRequest:
+      type: object
+      properties:
+        client_sale_id:
+          type: string
+          format: uuid
+        device_sequence:
+          type: integer
+          minimum: 1
+        offline_created_at:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/_OfflineItemRequest'
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/_OfflinePaymentRequest'
+        customer_name:
+          type: string
+          default: ''
+          maxLength: 150
+        customer_phone:
+          type: string
+          default: ''
+          maxLength: 30
+      required:
+      - client_sale_id
+      - device_sequence
+      - items
+      - offline_created_at
+      - payments
+    OfflineSessionEndRequest:
+      type: object
+      properties:
+        force:
+          type: boolean
+          default: false
+        mfa_confirmed:
+          type: boolean
+          default: false
+        reason:
+          type: string
+          default: ''
+          maxLength: 300
+    OfflineSyncRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        client_sale_id:
+          type: string
+          format: uuid
+          readOnly: true
+        device_sequence:
+          type: integer
+          readOnly: true
+        offline_created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        outcome:
+          allOf:
+          - $ref: '#/components/schemas/OutcomeEnum'
+          readOnly: true
+        detail_code:
+          type: string
+          readOnly: true
+        redacted_payload:
+          readOnly: true
+        sale:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        official_receipt_number:
+          type: string
+          readOnly: true
+        resolved:
+          type: boolean
+          readOnly: true
+        resolved_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        resolution_note:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - client_sale_id
+      - created_at
+      - detail_code
+      - device_sequence
+      - id
+      - official_receipt_number
+      - offline_created_at
+      - outcome
+      - redacted_payload
+      - resolution_note
+      - resolved
+      - resolved_at
+      - sale
+    OfflineSyncRecordResolveRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          minLength: 5
+          maxLength: 500
+      required:
+      - note
+    OfflineSyncRequestRequest:
+      type: object
+      properties:
+        authorization_token:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        sales:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfflineSaleInputRequest'
+      required:
+      - authorization_token
+      - sales
+    OfflineSyncResult:
+      type: object
+      properties:
+        client_sale_id:
+          type: string
+        device_sequence:
+          type: integer
+        outcome:
+          type: string
+        detail_code:
+          type: string
+        sale_id:
+          type: string
+          nullable: true
+        receipt_number:
+          type: string
+          nullable: true
+      required:
+      - client_sale_id
+      - detail_code
+      - device_sequence
+      - outcome
+      - receipt_number
+      - sale_id
+    OfflineTemporaryReceiptRequestRequest:
+      type: object
+      properties:
+        authorization_token:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        sale:
+          $ref: '#/components/schemas/OfflineSaleInputRequest'
+      required:
+      - authorization_token
+      - sale
     OpeningStockRequest:
       type: object
       properties:
@@ -4634,6 +5540,20 @@ components:
       - quantity
       - unit_cost
       - variant
+    OutcomeEnum:
+      enum:
+      - ACCEPTED
+      - DUPLICATE
+      - CONFLICT
+      - REJECTED
+      - OWNER_REVIEW_REQUIRED
+      type: string
+      description: |-
+        * `ACCEPTED` - Accepted — official Sale created
+        * `DUPLICATE` - Duplicate — already synced
+        * `CONFLICT` - Conflict — retained for owner resolution
+        * `REJECTED` - Rejected — invalid payload
+        * `OWNER_REVIEW_REQUIRED` - Owner review required
     OwnerUser:
       type: object
       description: Owner-facing user management. Password is write-only; never echoed.
@@ -5073,6 +5993,96 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Notification'
+    PaginatedOfflineAuthorizationList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfflineAuthorization'
+    PaginatedOfflineDeviceList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfflineDevice'
+    PaginatedOfflineSyncRecordList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfflineSyncRecord'
     PaginatedOwnerUserList:
       type: object
       required:
@@ -7219,6 +8229,39 @@ components:
       required:
       - quantity
       - variant
+    _OfflineItemRequest:
+      type: object
+      properties:
+        variant_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+      required:
+      - quantity
+      - variant_id
+    _OfflinePaymentRequest:
+      type: object
+      properties:
+        method:
+          $ref: '#/components/schemas/MethodEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        tendered_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          nullable: true
+        reference:
+          type: string
+          default: ''
+          maxLength: 150
+      required:
+      - amount
+      - method
     _PaymentLineRequest:
       type: object
       properties:

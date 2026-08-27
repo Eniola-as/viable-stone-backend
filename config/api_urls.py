@@ -30,6 +30,7 @@ urlpatterns = [
     path("", include("apps.catalog.api.urls")),
     path("", include("apps.inventory.api.urls")),
     path("", include("apps.sales.api.urls")),
+    path("", include("apps.sales.api.offline_urls")),
     path("", include("apps.finance.api.urls")),
     path("", include("apps.notifications.api.urls")),
 ]
