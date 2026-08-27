@@ -337,6 +337,9 @@ def request_discount(
         request=request,
         after={"requested_amount": str(amount)},
     )
+    from apps.notifications.services.approvals import notify_approval_requested
+
+    notify_approval_requested(approval)
     return approval
 
 
@@ -401,6 +404,9 @@ def approve_discount(
         request=request,
         after={"approved_amount": str(amount)},
     )
+    from apps.notifications.services.approvals import notify_approval_decided
+
+    notify_approval_decided(locked, approved=True)
     return locked
 
 
@@ -435,6 +441,9 @@ def reject_discount(
         branch=sale.branch,
         request=request,
     )
+    from apps.notifications.services.approvals import notify_approval_decided
+
+    notify_approval_decided(locked, approved=False)
     return locked
 
 

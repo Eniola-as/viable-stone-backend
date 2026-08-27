@@ -80,6 +80,7 @@ def _returned_quantity(sale_item) -> int:
     )
 
 
+@transaction.atomic
 def submit_return_request(
     *,
     sale,
@@ -146,6 +147,9 @@ def submit_return_request(
         request=request,
         after={"sale": str(sale.id), "lines": payload_lines},
     )
+    from apps.notifications.services.approvals import notify_approval_requested
+
+    notify_approval_requested(approval)
     return approval
 
 
@@ -180,6 +184,9 @@ def reject_return(
         request=request,
         after={"reviewer_note": reviewer_note or ""},
     )
+    from apps.notifications.services.approvals import notify_approval_decided
+
+    notify_approval_decided(locked, approved=False)
     return locked
 
 
@@ -397,6 +404,9 @@ def approve_return(
             "sale_status": sale.status,
         },
     )
+    from apps.notifications.services.approvals import notify_approval_decided
+
+    notify_approval_decided(locked, approved=True)
     return sale_return
 
 

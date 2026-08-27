@@ -262,6 +262,7 @@ REST_FRAMEWORK = {
         "auth_recovery": env("THROTTLE_AUTH_RECOVERY", default="5/min"),
         "sales_write": env("THROTTLE_SALES_WRITE", default="120/min"),
         "offline_sync": env("THROTTLE_OFFLINE_SYNC", default="60/min"),
+        "notifications_write": env("THROTTLE_NOTIFICATIONS_WRITE", default="60/min"),
     },
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
     "COERCE_DECIMAL_TO_STRING": True,
@@ -291,6 +292,21 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
 X_FRAME_OPTIONS = "DENY"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# --------------------------------------------------------------------------- #
+# Web Push (VAPID)                                                            #
+# --------------------------------------------------------------------------- #
+# Browser push is best-effort only; the durable in-app Notification is always
+# the source of truth. The PRIVATE key is a secret and lives only in the
+# environment — it is never exposed by an API, a log line or openapi.yml. Only
+# the browser-safe PUBLIC key is served (to the SPA's service worker).
+
+VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", default="")
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", default="")
+VAPID_ADMIN_EMAIL = env("VAPID_ADMIN_EMAIL", default="")
+PUSH_DEFAULT_TTL = env.int("PUSH_DEFAULT_TTL", default=600)
+# Nothing is sent over the network unless a full key pair is configured.
+PUSH_ENABLED = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and VAPID_ADMIN_EMAIL)
 
 # --------------------------------------------------------------------------- #
 # Sentry (enabled only when SENTRY_DSN is provided)                           #

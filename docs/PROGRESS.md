@@ -32,7 +32,7 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 | 12 | Receipt numbering + printable/PDF receipts | ✅ | A4 paid-receipt PDF (reportlab, no system deps) + JSON receipt, both from immutable snapshots. `GET /sales/{id}/receipt.pdf` (exact `Content-Type: application/pdf`, `Cache-Control: private, no-store`) + `/receipt/`, same role+branch scoping (cross-branch → 404). No cost/profit/DB-id/audit data. Currency shown as `NGN` (built-in fonts lack ₦; a non-Latin-1 symbol falls back). Business identity in `settings.BUSINESS_IDENTITY` only. Multi-page: header/columns repeat, "Page N" footer, long text wraps. 20 tests. |
 | 13 | Expenses + profit reports | ✅ | `ExpenseCategory` (CI-unique per branch) + `Expense` (amount > 0 CHECK, `receipt_file`). `void_expense` service: owner-only, once-only, requires a reason, preserves the original amount, audited. Owner APIs `/expense-categories/`, `/expenses/` (+ `void` action, no delete → 405, amount immutable after create). `/reports/` (owner-only): `profit` (revenue = Σ completed-sale totals, COGS = Σ qty·unit_cost_snapshot, gross, net = gross − non-voided expenses; Africa/Lagos `today`/`week`/`month`/`custom` ranges, end-inclusive), `best-sellers`, `slow-movers`, `inventory` (stock value + low-stock). 24 tests (freezegun-dated). |
 | 14 | Discounts, approvals, rare returns, refunds, protected adjustments | ✅ | **14A:** `ApprovalRequest`, `SaleReturn` (unique `(branch, client_return_id)`), `SaleReturnItem` (+`condition` RESELLABLE / DAMAGED_OR_OPENED), `Refund` (`issued_by`, amount>0). `submit_return_request` / `reject_return` / `approve_return` (owner-only, atomic, `select_for_update`, idempotent via `client_return_id`, ≤ sold−returned, original price+cost snapshots, RESELLABLE → `RETURN` movement + reverse COGS / DAMAGED → no restore, sale → PARTIALLY_RETURNED/RETURNED, receipt untouched). `adjust_stock` (owner, direction+positive qty+detailed reason, never negative, `select_for_update`, idempotent, audit before/after). `profit_report`/`best_sellers` net approved returns. **14B:** internal DRAFT sale (`create_draft_sale` — no payment/receipt/movement/report), `replace_draft_cart` (auto-supersedes a pending discount), `request_discount` (cashier, fixed Naira, reason, 0 < amount < subtotal), `approve_discount`/`reject_discount` (owner only), `finalise_draft` (atomic + idempotent + `select_for_update`; re-checks stock & active prices via a draft fingerprint → `approval_stale`; allocates the fixed discount across items in kobo by largest-remainder so parts sum exactly; cost snapshot taken at finalisation; payments == subtotal − discount; assigns receipt number). Discounted returns refund **net of discount** with a running kobo allocation (partial returns never over-refund; full return == final amount paid). Receipt shows Subtotal / Discount / Final total (PDF + JSON). APIs: `/sales/drafts/`, `/sales/{id}/{draft-cart,discount-requests,finalise,cancel}/`, polymorphic `/approvals/{id}/{approve,reject}/`, `/sales/{id}/return-requests/`, `/returns/`, `/inventory/adjustments/`. 83 tests incl. 3 real-thread PostgreSQL concurrency (approve-once, adjust-once, finalise-once). |
-| 15 | Notifications | ⏳ | |
+| 15 | Notifications | ✅ | Durable in-app `Notification` (recipient, branch, type, safe title/message, `is_read`/`read_at`, safe `related_object_type`/`id`, allowlisted `action_path`, `dedupe_key`; unique `(recipient, dedupe_key)`) + `PushSubscription` (unique `(user, endpoint)`, upsert, `failure_count`/`expired_at`). Every alert writes (and de-dupes) the durable row **inside the business transaction** — a rollback removes the change and the notification together, and a `(recipient, dedupe_key)` race is absorbed in a savepoint without poisoning that transaction; only the external Web Push is deferred to `transaction.on_commit` and a push failure never touches the business txn. **Central stock detection:** `write_movement` emits `stock_balance_changed` while the balance is locked; one receiver classifies OK/LOW/OUT vs `variant.low_stock_level` and alerts branch owners only on a level *change* into LOW or OUT — never repeatedly while low/out, direct drop to 0 sends only OUT_OF_STOCK, recovery resets the cycle, OUT→still-low sends one LOW_STOCK. Works identically through sales, returns, restocks, stock counts and protected adjustments. **Approvals:** submitting a discount/return request notifies active branch owners (not the requester); the decision notifies the requester (never self). APIs: `/notifications/` (list, `unread-count`, `{id}/read/`, `read-all/` — all own-only, cross-user/branch → 404, mark-read idempotent, no create/edit/delete), `/push-subscriptions/` (upsert-create, list, `{id}/deactivate/`, delete — own-only, HTTPS-or-localhost + key-length validation, rate-limited `notifications_write`), `/push-subscriptions/public-key/` (public VAPID key only). `p256dh`/`auth` never appear in any response body or `openapi.yml` response schema; private VAPID key is env-only, never in APIs/logs/openapi; `.env.example` uses illustrative placeholders only. 94 tests incl. real-thread PostgreSQL dedupe concurrency, in-transaction-row + rollback-removes-both, dedupe-race isolation, push-failure isolation, and protected-field-leak checks. |
 | 16 | One-device offline fixed-price checkout + idempotent sync | ⏳ | |
 | 17 | Security hardening, CI, monitoring, deployment, backup/restore docs | ⏳ | Redis required. |
 | 18 | Acceptance tests + final OpenAPI contract | ⏳ | |
@@ -45,25 +45,28 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 - `29ef932` — **Stage 12** (A4 paid-receipt PDF + JSON receipt).
 - `6f9c6b6` — **Stage 13** (expenses + profit reports).
 - `1211ca0` — **Stage 14A** (returns, refunds, protected stock adjustments).
-- **Stage 14B** — owner-approved fixed-Naira discount workflow (completes Stage 14).
+- `8243e7f` — **Stage 14B** — owner-approved fixed-Naira discount workflow
+  (completes Stage 14).
+- **Stage 15** — notifications (durable in-app `Notification` + best-effort Web
+  Push; central low/out-of-stock transition detection; approval-workflow alerts).
 - Branch `setup/backend-foundation`. `.env` excluded (git-ignored); `openapi.yml`
   and `docs/PROGRESS.md` committed in each.
 
-## Test suite — 2026-08-27 (through Stage 14)
+## Test suite — 2026-08-27 (through Stage 15)
 
 ```
-pytest --collect-only -q  -> 276 tests collected
-pytest --create-db        -> 276 passed, 0 failed, 0 skipped   (PostgreSQL 18)
-coverage                  -> 93% lines
+pytest --collect-only -q  -> 370 tests collected
+pytest --create-db        -> 370 passed, 0 failed, 0 skipped   (PostgreSQL 18)
+coverage                  -> 93% lines (apps/notifications 97%)
 ruff check .              -> All checks passed
 ruff format --check .     -> clean
 manage.py check           -> 0 issues
 makemigrations --check    -> No changes detected
-spectacular --validate    -> exit 0, 0 warnings, 0 errors (openapi.yml)
+spectacular --validate --fail-on-warn -> exit 0, 0 warnings, 0 errors (openapi.yml)
 check --deploy (prod)     -> 0 issues
 ```
 
-### Collected test inventory (276, through Stage 14)
+### Collected test inventory (370, through Stage 15)
 
 | File | Tests |
 |---|---|
@@ -93,10 +96,23 @@ check --deploy (prod)     -> 0 issues
 | finance/tests/test_expenses.py | 14 |
 | finance/tests/test_reports.py | 10 |
 | finance/tests/test_reports_returns.py | 4 |
-| **Total** | **276** |
+| notifications/tests/test_push_subscriptions_api.py | 19 |
+| notifications/tests/test_stock_transitions.py | 17 |
+| notifications/tests/test_notifications_api.py | 12 |
+| notifications/tests/test_secret_hygiene.py | 10 |
+| notifications/tests/test_stock_alerts.py | 8 |
+| notifications/tests/test_approval_alerts.py | 7 |
+| notifications/tests/test_models.py | 7 |
+| notifications/tests/test_webpush.py | 5 |
+| notifications/tests/test_transaction_boundary.py | 4 |
+| notifications/tests/test_action_paths.py | 3 |
+| notifications/tests/test_notifications_concurrency.py | 2 |
+| **Total** | **370** |
 
 Stage 14 is complete: 14A (returns / refunds / protected adjustments) +
 14B (owner-approved fixed-Naira discount on an internal DRAFT sale).
+Stage 15 is complete: durable in-app notifications + best-effort Web Push,
+central low/out-of-stock transition detection, approval-workflow alerts.
 
 (Stages 1–10 alone: 112.)
 
@@ -281,3 +297,52 @@ report 112, 0 skipped:
   completed sale, one payment, one SALE movement). Full battery: **276 passed**,
   93% coverage; ruff / check / makemigrations --check / check --deploy clean;
   `openapi.yml` regenerated + validated (0 warnings, 0 errors). Stage 14 complete.
+- 2026-08-27: **Stage 14B** committed as `8243e7f`.
+- 2026-08-27: **Stage 15** — notifications. New `apps/notifications`:
+  `Notification` (durable in-app record — recipient, branch, type, safe
+  title/message, `is_read`/`read_at`, safe `related_object_type`/`id`,
+  allowlisted `action_path`, `dedupe_key`; unique `(recipient, dedupe_key)`) and
+  `PushSubscription` (unique `(user, endpoint)`, upsert on register,
+  `failure_count`/`expired_at`, auto-deactivate on 404/410 or repeated failure).
+  `services/dispatch.py` writes (and de-duplicates) the durable row **inside the
+  caller's transaction** — a rolled-back business event removes both the change
+  and the notification; each `get_or_create` runs in its own savepoint so a
+  `(recipient, dedupe_key)` race is absorbed without poisoning the surrounding
+  transaction. Only the external Web Push is deferred with
+  `transaction.on_commit`, and any push failure is swallowed so it can never
+  affect the committed sale / movement / return / approval / adjustment.
+  `services/webpush.py` makes no network call unless `PUSH_ENABLED` (false in
+  tests / when VAPID keys absent) and logs only non-secret context (never the
+  exception text, subscription keys or the VAPID private key). **Central stock
+  detection:**
+  `inventory.services.stock.write_movement` now emits a `stock_balance_changed`
+  signal while the balance row is locked; `notifications/receivers.py` +
+  `services/stock_alerts.py` classify OK/LOW/OUT against
+  `ProductVariant.low_stock_level` and notify active branch owners only on a
+  level *change* into LOW or OUT — no repeat while low/out, a direct drop to
+  zero sends only OUT_OF_STOCK, recovery above threshold resets the cycle,
+  OUT→still-low sends one LOW_STOCK. Identical behaviour across sales, returns,
+  restocks, stock counts and protected adjustments. **Approval alerts:**
+  `request_discount` / `submit_return_request` notify active branch owners
+  (excluding the requester); `approve_*` / `reject_*` notify the original
+  requester (never when requester == reviewer). APIs: `GET /notifications/`,
+  `GET /notifications/unread-count/`, `POST /notifications/{id}/read/`,
+  `POST /notifications/read-all/` (own-only, cross-user/branch → 404, mark-read
+  idempotent, no client create/edit/delete); `POST|GET /push-subscriptions/`
+  (upsert-create, list), `POST /push-subscriptions/{id}/deactivate/`,
+  `DELETE /push-subscriptions/{id}/` (own-only; HTTPS-or-localhost + key-length
+  validation; write endpoints rate-limited via `notifications_write` scope);
+  `GET /push-subscriptions/public-key/` exposes only the browser-safe public
+  key. `PushSubscriptionSerializer` never carries `p256dh` / `auth`; with
+  `COMPONENT_SPLIT_REQUEST` those appear only in the `*Request` schema, so no
+  response body or `openapi.yml` response component exposes them. VAPID private
+  key is env-only — `.env.example` carries illustrative placeholders for the
+  business-contact and VAPID lines (real values live only in `.env` /
+  deployment env), `config/settings/base.py` defaults every contact and the
+  VAPID private key to `""`. 94 tests incl. two real-thread PostgreSQL
+  dedupe-concurrency tests, in-transaction-row + rollback-removes-both,
+  dedupe-race-does-not-poison-transaction, push-failure isolation, and explicit
+  protected-field-leak / no-secret-in-schema-openapi-logs checks. Full battery:
+  **370 passed**, 93% coverage (apps/notifications 97%); ruff / check /
+  makemigrations --check / check --deploy (prod) clean; `openapi.yml`
+  regenerated + validated (`--fail-on-warn`, 0 warnings / 0 errors).

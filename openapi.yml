@@ -1617,6 +1617,137 @@ paths:
               schema:
                 $ref: '#/components/schemas/InventoryBalanceEmployee'
           description: ''
+  /api/v1/notifications/:
+    get:
+      operationId: notifications_list
+      description: |-
+        A user sees only their own notifications. Clients cannot create, edit or
+        delete them — only list, read and mark-as-read.
+      summary: List my notifications
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNotificationList'
+          description: ''
+  /api/v1/notifications/{id}/:
+    get:
+      operationId: notifications_retrieve
+      description: |-
+        A user sees only their own notifications. Clients cannot create, edit or
+        delete them — only list, read and mark-as-read.
+      summary: Retrieve one of my notifications
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this notification.
+        required: true
+      tags:
+      - Notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/v1/notifications/{id}/read/:
+    post:
+      operationId: notifications_read_create
+      description: |-
+        A user sees only their own notifications. Clients cannot create, edit or
+        delete them — only list, read and mark-as-read.
+      summary: Mark one notification read (idempotent)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this notification.
+        required: true
+      tags:
+      - Notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/v1/notifications/read-all/:
+    post:
+      operationId: notifications_read_all_create
+      description: |-
+        A user sees only their own notifications. Clients cannot create, edit or
+        delete them — only list, read and mark-as-read.
+      summary: Mark all my notifications read (idempotent)
+      tags:
+      - Notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadAllResult'
+          description: ''
+  /api/v1/notifications/unread-count/:
+    get:
+      operationId: notifications_unread_count_retrieve
+      description: |-
+        A user sees only their own notifications. Clients cannot create, edit or
+        delete them — only list, read and mark-as-read.
+      summary: Count my unread notifications
+      tags:
+      - Notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnreadCount'
+          description: ''
   /api/v1/products/:
     get:
       operationId: products_list
@@ -1780,6 +1911,181 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProductWrite'
+          description: ''
+  /api/v1/push-subscriptions/:
+    get:
+      operationId: push_subscriptions_list
+      description: |-
+        A user manages only their own browser/device subscriptions. Registration
+        upserts on ``(user, endpoint)`` so re-subscribing the same browser is safe.
+        Write actions are rate limited.
+      summary: List my push subscriptions
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPushSubscriptionList'
+          description: ''
+    post:
+      operationId: push_subscriptions_create
+      description: |-
+        A user manages only their own browser/device subscriptions. Registration
+        upserts on ``(user, endpoint)`` so re-subscribing the same browser is safe.
+        Write actions are rate limited.
+      summary: Register or update (upsert) a browser push subscription
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushSubscriptionWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PushSubscriptionWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PushSubscriptionWriteRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushSubscription'
+          description: ''
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushSubscription'
+          description: ''
+  /api/v1/push-subscriptions/{id}/:
+    get:
+      operationId: push_subscriptions_retrieve
+      description: |-
+        A user manages only their own browser/device subscriptions. Registration
+        upserts on ``(user, endpoint)`` so re-subscribing the same browser is safe.
+        Write actions are rate limited.
+      summary: Retrieve one of my push subscriptions
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this push subscription.
+        required: true
+      tags:
+      - Notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushSubscription'
+          description: ''
+    delete:
+      operationId: push_subscriptions_destroy
+      description: |-
+        A user manages only their own browser/device subscriptions. Registration
+        upserts on ``(user, endpoint)`` so re-subscribing the same browser is safe.
+        Write actions are rate limited.
+      summary: Delete one of my push subscriptions
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this push subscription.
+        required: true
+      tags:
+      - Notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/push-subscriptions/{id}/deactivate/:
+    post:
+      operationId: push_subscriptions_deactivate_create
+      description: |-
+        A user manages only their own browser/device subscriptions. Registration
+        upserts on ``(user, endpoint)`` so re-subscribing the same browser is safe.
+        Write actions are rate limited.
+      summary: Deactivate one of my push subscriptions
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this push subscription.
+        required: true
+      tags:
+      - Notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushSubscription'
+          description: ''
+  /api/v1/push-subscriptions/public-key/:
+    get:
+      operationId: push_subscriptions_public_key_retrieve
+      description: |-
+        A user manages only their own browser/device subscriptions. Registration
+        upserts on ``(user, endpoint)`` so re-subscribing the same browser is safe.
+        Write actions are rate limited.
+      summary: The browser-safe VAPID public key
+      tags:
+      - Notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VapidPublicKey'
           description: ''
   /api/v1/reports/best-sellers/:
     get:
@@ -4243,6 +4549,74 @@ components:
         * `CASH` - Cash
         * `TRANSFER` - Bank transfer
         * `POS` - POS / card
+    Notification:
+      type: object
+      description: |-
+        Read-only view of a notification. Carries no cost, profit, audit or
+        private customer data — only the safe title/message and a deep-link path.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        notification_type:
+          allOf:
+          - $ref: '#/components/schemas/NotificationTypeEnum'
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        message:
+          type: string
+          readOnly: true
+        is_read:
+          type: boolean
+          readOnly: true
+        read_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        action_path:
+          type: string
+          readOnly: true
+        related_object_type:
+          type: string
+          readOnly: true
+        related_object_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+      required:
+      - action_path
+      - created_at
+      - id
+      - is_read
+      - message
+      - notification_type
+      - read_at
+      - related_object_id
+      - related_object_type
+      - title
+    NotificationTypeEnum:
+      enum:
+      - LOW_STOCK
+      - OUT_OF_STOCK
+      - APPROVAL_REQUESTED
+      - APPROVAL_APPROVED
+      - APPROVAL_REJECTED
+      type: string
+      description: |-
+        * `LOW_STOCK` - Low stock
+        * `OUT_OF_STOCK` - Out of stock
+        * `APPROVAL_REQUESTED` - Approval requested
+        * `APPROVAL_APPROVED` - Approval approved
+        * `APPROVAL_REJECTED` - Approval rejected
     OpeningStockRequest:
       type: object
       properties:
@@ -4669,6 +5043,36 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/InventoryBalanceEmployee'
+    PaginatedNotificationList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
     PaginatedOwnerUserList:
       type: object
       required:
@@ -4789,6 +5193,36 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProductVariantRead'
+    PaginatedPushSubscriptionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PushSubscription'
     PaginatedRestockReadList:
       type: object
       required:
@@ -5605,6 +6039,77 @@ components:
       - revenue
       - sales_count
       - start
+    PushSubscription:
+      type: object
+      description: Read view — the p256dh / auth secrets are never echoed back.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        endpoint:
+          type: string
+          format: uri
+          readOnly: true
+        user_agent:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        last_used_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        expired_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - endpoint
+      - expired_at
+      - id
+      - is_active
+      - last_used_at
+      - user_agent
+    PushSubscriptionWriteRequest:
+      type: object
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 500
+        p256dh:
+          type: string
+          minLength: 80
+          maxLength: 200
+        auth:
+          type: string
+          minLength: 16
+          maxLength: 100
+        user_agent:
+          type: string
+          default: ''
+          maxLength: 300
+      required:
+      - auth
+      - endpoint
+      - p256dh
+    ReadAllResult:
+      type: object
+      properties:
+        updated:
+          type: integer
+      required:
+      - updated
     Receipt:
       type: object
       properties:
@@ -6605,6 +7110,13 @@ components:
           minLength: 1
       required:
       - token
+    UnreadCount:
+      type: object
+      properties:
+        unread:
+          type: integer
+      required:
+      - unread
     UserSelf:
       type: object
       description: The signed-in user's own safe profile. No cost/secret/audit fields.
@@ -6672,6 +7184,13 @@ components:
       - phone
       - role
       - username
+    VapidPublicKey:
+      type: object
+      properties:
+        public_key:
+          type: string
+      required:
+      - public_key
     _Business:
       type: object
       properties:

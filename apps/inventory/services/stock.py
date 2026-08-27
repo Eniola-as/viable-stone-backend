@@ -20,6 +20,7 @@ from apps.inventory.models import (
     MovementType,
     StockMovement,
 )
+from apps.inventory.signals import stock_balance_changed
 
 _BALANCE_FIELDS = ["quantity", "average_unit_cost", "last_restocked_at", "updated_at"]
 
@@ -54,7 +55,8 @@ def write_movement(
 
     if delta == 0:
         return None
-    new_quantity = balance.quantity + delta
+    previous_quantity = balance.quantity
+    new_quantity = previous_quantity + delta
     if new_quantity < 0 and not allow_negative:
         raise APIError(
             f"Only {balance.quantity} unit(s) of {balance.variant.sku} are available.",
@@ -63,7 +65,7 @@ def write_movement(
         )
     balance.quantity = new_quantity
     balance.save(update_fields=_BALANCE_FIELDS)
-    return StockMovement.objects.create(
+    movement = StockMovement.objects.create(
         branch=balance.branch,
         variant=balance.variant,
         movement_type=movement_type,
@@ -76,6 +78,20 @@ def write_movement(
         reason=reason,
         created_by=created_by,
     )
+    # Central hook: every workflow's balance change is announced from this one
+    # place, while the row is still locked, so listeners (low/out-of-stock
+    # notifications) stay consistent across sales, returns, restocks, counts
+    # and adjustments.
+    stock_balance_changed.send(
+        sender=InventoryBalance,
+        branch=balance.branch,
+        variant=balance.variant,
+        previous_quantity=previous_quantity,
+        new_quantity=new_quantity,
+        movement=movement,
+        actor=created_by,
+    )
+    return movement
 
 
 @transaction.atomic
