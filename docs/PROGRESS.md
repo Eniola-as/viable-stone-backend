@@ -28,8 +28,8 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 | 8 | Request IDs, API errors, pagination, permissions, audit, health, OpenAPI | ✅ | 401-vs-403 semantics verified; `openapi.yml` validates. |
 | 9 | Catalogue + price history | ✅ | 28 tests — CI uniqueness, SKU/barcode, price history, cost-free employee output. |
 | 10 | Suppliers, restocking, balances, weighted-avg cost, movements | ✅ | 36 tests incl. 2 real-thread PostgreSQL concurrency tests. |
-| 11 | Ordinary fully-paid sales + split payments | 🔄 | TDD in progress. |
-| 12 | Receipt numbering + printable/PDF receipts | ⏳ | |
+| 11 | Ordinary fully-paid sales + split payments | ✅ | Customer/ReceiptSequence/Sale/SaleItem/Payment; `create_sale` (11-step atomic, idempotent); cash/transfer/POS/split; per-branch-day receipt numbering; sales list + cashier "own sales" rule; customer API (phone masked in lists). 37 tests incl. 2 real-thread concurrency (idempotency + no oversell). |
+| 12 | Receipt numbering + printable/PDF receipts | 🔄 | Receipt numbering done in Stage 11; HTML/PDF rendering pending. |
 | 13 | Expenses + profit reports | ⏳ | |
 | 14 | Discounts, approvals, rare returns, refunds, protected adjustments | ⏳ | |
 | 15 | Notifications | ⏳ | |
@@ -149,4 +149,14 @@ report 112, 0 skipped:
   `open_stock`/`confirm_restock`/`apply_stock_count`, weighted-average costing,
   `select_for_update` locking, no-negative-stock.
 - 2026-08-27: Test DB unblocked (CREATEDB). Full suite green: **112 passed**,
-  92% coverage. Committed as `985233f`.
+  92% coverage. Committed as `985233f` (+ `7a04860` docs).
+- 2026-08-27: Stage 11 — sales + payments. `create_sale` service implements every
+  blueprint rule inside one `transaction.atomic()`: active cashier/branch, merged
+  cart lines, deterministic `select_for_update` balance locks, server-side prices
+  (client price/total ignored), inactive/wrong-branch/insufficient-stock rejection,
+  Decimal money, CASH/TRANSFER/POS/split payment validation with
+  `sum(payments) == total` exactly, cost + name/price snapshots, one SALE movement
+  per variant, per-branch-per-day receipt numbering, and an idempotency key
+  (`client_sale_id`) so a retry never duplicates a sale or a stock reduction.
+  Customer optional (walk-in creates no row; phone masked in broad lists).
+  Full suite: **149 passed**. `openapi.yml` regenerated + validated (0 warn/err).

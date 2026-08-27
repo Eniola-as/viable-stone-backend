@@ -750,6 +750,158 @@ paths:
               schema:
                 $ref: '#/components/schemas/Category'
           description: ''
+  /api/v1/customers/:
+    get:
+      operationId: customers_list
+      summary: List customers (phone masked)
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Sales
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCustomerListList'
+          description: ''
+    post:
+      operationId: customers_create
+      summary: Add customer details
+      tags:
+      - Sales
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CustomerRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CustomerRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+          description: ''
+  /api/v1/customers/{id}/:
+    get:
+      operationId: customers_retrieve
+      summary: Retrieve a customer
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this customer.
+        required: true
+      tags:
+      - Sales
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+          description: ''
+    put:
+      operationId: customers_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this customer.
+        required: true
+      tags:
+      - customers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CustomerRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CustomerRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+          description: ''
+    patch:
+      operationId: customers_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this customer.
+        required: true
+      tags:
+      - customers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCustomerRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCustomerRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCustomerRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+          description: ''
   /api/v1/health/:
     get:
       operationId: health_retrieve
@@ -1292,6 +1444,95 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RestockRead'
+          description: ''
+  /api/v1/sales/:
+    get:
+      operationId: sales_list
+      summary: List sales (own sales for cashiers)
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Sales
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSaleReadList'
+          description: ''
+    post:
+      operationId: sales_create
+      summary: Create a fully-paid sale (cash / transfer / POS / split)
+      tags:
+      - Sales
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaleCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SaleCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SaleCreateRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaleRead'
+          description: ''
+  /api/v1/sales/{id}/:
+    get:
+      operationId: sales_retrieve
+      summary: Retrieve a sale
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this sale.
+        required: true
+      tags:
+      - Sales
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaleRead'
           description: ''
   /api/v1/stock-counts/:
     get:
@@ -2317,6 +2558,72 @@ components:
           type: boolean
       required:
       - name
+    Customer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 30
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - updated_at
+    CustomerInlineRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          default: ''
+        phone:
+          type: string
+          default: ''
+    CustomerList:
+      type: object
+      description: Broad list view — phone is masked for everyone.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        phone:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - phone
+    CustomerRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 30
     Health:
       type: object
       properties:
@@ -2755,6 +3062,36 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Category'
+    PaginatedCustomerListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomerList'
     PaginatedInventoryBalanceEmployeeList:
       type: object
       required:
@@ -2935,6 +3272,36 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RestockRead'
+    PaginatedSaleReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 25
+        total_pages:
+          type: integer
+          example: 5
+        next:
+          type: string
+          nullable: true
+          format: uri
+        previous:
+          type: string
+          nullable: true
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SaleRead'
     PaginatedStockCountReadList:
       type: object
       required:
@@ -3053,6 +3420,15 @@ components:
           maxLength: 100
         is_active:
           type: boolean
+    PatchedCustomerRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 30
     PatchedOwnerUserRequest:
       type: object
       description: Owner-facing user management. Password is write-only; never echoed.
@@ -3194,6 +3570,83 @@ components:
           type: string
         is_active:
           type: boolean
+    PaymentInputMethodEnum:
+      enum:
+      - CASH
+      - TRANSFER
+      - POS
+      type: string
+      description: |-
+        * `CASH` - CASH
+        * `TRANSFER` - TRANSFER
+        * `POS` - POS
+    PaymentInputRequest:
+      type: object
+      properties:
+        method:
+          $ref: '#/components/schemas/PaymentInputMethodEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        tendered_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          nullable: true
+        reference:
+          type: string
+          default: ''
+          maxLength: 150
+      required:
+      - amount
+      - method
+    PaymentRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        method:
+          allOf:
+          - $ref: '#/components/schemas/PaymentReadMethodEnum'
+          readOnly: true
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        tendered_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+          nullable: true
+        reference:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount
+      - created_at
+      - id
+      - method
+      - reference
+      - tendered_amount
+    PaymentReadMethodEnum:
+      enum:
+      - CASH
+      - TRANSFER
+      - POS
+      type: string
+      description: |-
+        * `CASH` - Cash
+        * `TRANSFER` - Bank transfer
+        * `POS` - POS / card
     PriceHistory:
       type: object
       properties:
@@ -3711,6 +4164,203 @@ components:
         * `TECH_ADMIN` - Technical administrator
         * `OWNER` - Owner
         * `EMPLOYEE` - Employee
+    SaleCreateRequest:
+      type: object
+      properties:
+        client_sale_id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SaleItemInputRequest'
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentInputRequest'
+        customer:
+          allOf:
+          - $ref: '#/components/schemas/CustomerInlineRequest'
+          nullable: true
+      required:
+      - client_sale_id
+      - items
+      - payments
+    SaleItemInputRequest:
+      type: object
+      properties:
+        variant:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+      required:
+      - quantity
+      - variant
+    SaleItemOwner:
+      type: object
+      description: 'Cashier-safe: snapshots and price, never cost.'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        variant:
+          type: string
+          format: uuid
+          readOnly: true
+        product_name_snapshot:
+          type: string
+          readOnly: true
+        sku_snapshot:
+          type: string
+          readOnly: true
+        variant_description_snapshot:
+          type: string
+          readOnly: true
+        quantity:
+          type: integer
+          readOnly: true
+        unit_price_snapshot:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        discount_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        line_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        unit_cost_snapshot:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+      required:
+      - discount_amount
+      - id
+      - line_total
+      - product_name_snapshot
+      - quantity
+      - sku_snapshot
+      - unit_cost_snapshot
+      - unit_price_snapshot
+      - variant
+      - variant_description_snapshot
+    SaleRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        receipt_number:
+          type: string
+          readOnly: true
+          nullable: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SaleReadStatusEnum'
+          readOnly: true
+        source:
+          allOf:
+          - $ref: '#/components/schemas/SourceEnum'
+          readOnly: true
+        cashier:
+          type: string
+          format: uuid
+          readOnly: true
+        cashier_username:
+          type: string
+          readOnly: true
+        customer:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        customer_name:
+          type: string
+          readOnly: true
+        subtotal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        discount_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        change_due:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        completed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SaleItemOwner'
+          readOnly: true
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentRead'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - cashier
+      - cashier_username
+      - change_due
+      - completed_at
+      - created_at
+      - customer
+      - customer_name
+      - discount_total
+      - id
+      - items
+      - payments
+      - receipt_number
+      - source
+      - status
+      - subtotal
+      - total
+    SaleReadStatusEnum:
+      enum:
+      - DRAFT
+      - PENDING_APPROVAL
+      - PENDING_SYNC
+      - COMPLETED
+      - PARTIALLY_RETURNED
+      - RETURNED
+      - CANCELLED
+      type: string
+      description: |-
+        * `DRAFT` - Draft
+        * `PENDING_APPROVAL` - Pending approval
+        * `PENDING_SYNC` - Pending sync
+        * `COMPLETED` - Completed
+        * `PARTIALLY_RETURNED` - Partially returned
+        * `RETURNED` - Returned
+        * `CANCELLED` - Cancelled
     SetPriceRequest:
       type: object
       properties:
@@ -3720,6 +4370,14 @@ components:
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
       required:
       - amount
+    SourceEnum:
+      enum:
+      - ONLINE
+      - OFFLINE
+      type: string
+      description: |-
+        * `ONLINE` - Online
+        * `OFFLINE` - Offline
     StockCountItemRead:
       type: object
       properties:
