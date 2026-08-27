@@ -26,12 +26,23 @@ Nothing here has been deployed. This is the runbook for when the shop is ready.
 ## Container vulnerability scanning
 
 CI's `docker` job scans the built image with Trivy (`aquasecurity/trivy-action`,
-pinned to a verified commit SHA) and **fails the build on any fixable HIGH or
-CRITICAL** OS/application vulnerability. `ignore-unfixed: true` is deliberate —
-HIGH/CRITICAL findings in the Debian base with no upstream fix are still printed
-but do not block the pipeline; any *accepted* CVE must be listed with a
-justification and review date in `.trivyignore` (currently empty). Re-run
-locally with `trivy image viable-stone-backend:local`.
+pinned to a verified 40-character commit SHA). Configuration:
+`severity: HIGH,CRITICAL`, `vuln-type: os,library`, `exit-code: "1"`,
+**`ignore-unfixed: false`** — the build **fails on every HIGH or CRITICAL OS or
+application vulnerability, fixed or unfixed**.
+
+The only way to pass with a known HIGH/CRITICAL finding is to add its exact CVE
+id to `.trivyignore` with a full justification block (CVE id, package, reason,
+residual-risk assessment, approver + date, review-by date). Broad severity or
+"unfixed" suppression is not allowed, and an entry must never be added just to
+make CI green — bump the pinned base-image digest or dependency instead. There
+are **no approved exclusions** at present.
+
+If the pinned base image ships an unpatched HIGH/CRITICAL, this job will fail;
+the fix is to bump `Dockerfile`'s pinned digest (Dependabot raises that PR) or,
+only with sign-off, add a documented `.trivyignore` entry.
+
+Re-run locally: `trivy image viable-stone-backend:local`.
 
 Build & smoke-test locally:
 

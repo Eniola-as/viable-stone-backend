@@ -124,7 +124,7 @@ jobs:
           print(f"full suite: tests={tests} failures={fail} errors={err} skipped={skip}")
           assert fail == 0 and err == 0, "test failures/errors"
           assert skip == 0, f"{skip} test(s) skipped in CI; every dependency must be present"
-          assert tests >= 484, f"expected >= 484 tests, collected {tests}"
+          assert tests >= 496, f"expected >= 496 tests, collected {tests}"
           PY
 
       - name: Redis integration tests must run (marker, 5 tests, 0 skipped)
@@ -155,7 +155,10 @@ jobs:
       - name: Dependency vulnerability audit
         run: pip-audit --strict --skip-editable --progress-spinner off
 
-      - name: Secret-leak scan
+      - name: GitHub Actions pin audit (every `uses:` is a 40-hex commit SHA)
+        run: bash scripts/check_action_pins.sh
+
+      - name: Secret-leak scan (+ inline-credential DB-URL allowlist)
         run: bash scripts/check_secrets.sh
 
   docker:
@@ -236,13 +239,15 @@ jobs:
           test "$ready" = "503" || (echo "::error::readiness should be 503 when Redis is down" && exit 1)
           docker rm -f "$cid" >/dev/null; trap - EXIT
 
-      - name: Scan final image for HIGH/CRITICAL vulnerabilities
+      - name: Scan final image for HIGH/CRITICAL vulnerabilities (fixed AND unfixed)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: viable-stone-backend:ci
           format: table
           severity: HIGH,CRITICAL
           vuln-type: os,library
-          ignore-unfixed: true
+          # Report AND fail on every HIGH/CRITICAL, whether or not a fix exists.
+          ignore-unfixed: false
           exit-code: "1"
+          # Only individually approved CVE IDs may be excluded — see .trivyignore.
           trivyignores: .trivyignore

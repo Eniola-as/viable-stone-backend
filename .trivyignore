@@ -1,17 +1,23 @@
 # Trivy vulnerability-scan exception list for the production container image.
 #
-# Policy (enforced by .github/workflows/ci.yml -> "Scan final image"):
-#   * The build FAILS on any HIGH or CRITICAL OS or application vulnerability
-#     that has a fix available (`ignore-unfixed: true`).
-#   * `ignore-unfixed: true` is a deliberate choice: HIGH/CRITICAL findings in
-#     the Debian slim-bookworm base with NO upstream fix cannot be remediated
-#     here and would otherwise block every build indefinitely. They are still
-#     reported in the scan output for visibility and are re-evaluated whenever
-#     Dependabot bumps the pinned base-image digest.
-#   * Every entry below MUST have: the CVE id, the affected package, why it is
-#     accepted, and a review-by date. No silent ignores.
+# Policy (enforced by .github/workflows/ci.yml -> "Scan final image ..."):
+#   * The build FAILS on EVERY HIGH or CRITICAL OS or application vulnerability
+#     in the final image — fixed OR unfixed (`ignore-unfixed: false`).
+#   * The ONLY way to pass with a known HIGH/CRITICAL finding is to add its
+#     exact CVE id below, with a complete justification block. Broad severity
+#     or "unfixed" suppression is not permitted.
+#   * Do NOT add an entry merely to make CI go green. If a finding cannot be
+#     accepted, bump the pinned base-image digest / dependency instead.
 #
-# Format: one CVE id per line (optionally `CVE-XXXX-YYYY exp:2026-12-31`).
+# Required fields for every exception (all mandatory):
+#   # CVE-XXXX-YYYYY
+#   #   Package:    <name@version>
+#   #   Reason:     why this specific CVE does not apply to how we run the image
+#   #   Risk:       residual risk assessment (impact x exploitability here)
+#   #   Approved-by: <name / role> on <YYYY-MM-DD>
+#   #   Review-by:  <YYYY-MM-DD>   (re-evaluate or remove on/before this date)
+#   CVE-XXXX-YYYYY
 #
-# --- Accepted exceptions (none at present) --------------------------------- #
-# (add entries here with the justification block above)
+# ------------------------------------------------------------------------- #
+# APPROVED EXCEPTIONS: none.
+# ------------------------------------------------------------------------- #
