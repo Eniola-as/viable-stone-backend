@@ -261,14 +261,23 @@ def approve_return(
         qty = int(line.quantity)
         if qty <= 0:
             raise APIError("Quantities must be positive.", code="invalid_quantity")
-        remaining = sale_item.quantity - _returned_quantity(sale_item)
+        already = _returned_quantity(sale_item)
+        remaining = sale_item.quantity - already
         if qty > remaining:
             raise APIError(
                 f"Only {remaining} unit(s) of {sale_item.sku_snapshot} can still "
                 f"be returned.",
                 code="return_quantity_exceeded",
             )
-        line_total = to_money(sale_item.unit_price_snapshot * qty)
+        # Refund the NET amount actually paid for this line after any approved
+        # discount (SaleItem.line_total is unit_price*qty minus the allocated
+        # discount). Running kobo allocation so multiple partial returns sum
+        # exactly to the line's net paid amount and never over-refund.
+        net_line_minor = int((sale_item.line_total * 100).to_integral_value())
+        n = sale_item.quantity
+        prev_alloc = net_line_minor * already // n
+        new_alloc = net_line_minor * (already + qty) // n
+        line_total = to_money(Decimal(new_alloc - prev_alloc) / 100)
         resolved.append(
             _Resolved(
                 sale_item=sale_item,

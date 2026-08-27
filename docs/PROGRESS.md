@@ -31,7 +31,7 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 | 11 | Ordinary fully-paid sales + split payments | ✅ | Customer/ReceiptSequence/Sale/SaleItem/Payment; `create_sale` (11-step atomic, idempotent); cash/transfer/POS/split; per-branch-day receipt numbering; sales list + cashier "own sales" rule; customer API (phone masked in lists). 37 tests incl. 2 real-thread concurrency (idempotency + no oversell). |
 | 12 | Receipt numbering + printable/PDF receipts | ✅ | A4 paid-receipt PDF (reportlab, no system deps) + JSON receipt, both from immutable snapshots. `GET /sales/{id}/receipt.pdf` (exact `Content-Type: application/pdf`, `Cache-Control: private, no-store`) + `/receipt/`, same role+branch scoping (cross-branch → 404). No cost/profit/DB-id/audit data. Currency shown as `NGN` (built-in fonts lack ₦; a non-Latin-1 symbol falls back). Business identity in `settings.BUSINESS_IDENTITY` only. Multi-page: header/columns repeat, "Page N" footer, long text wraps. 20 tests. |
 | 13 | Expenses + profit reports | ✅ | `ExpenseCategory` (CI-unique per branch) + `Expense` (amount > 0 CHECK, `receipt_file`). `void_expense` service: owner-only, once-only, requires a reason, preserves the original amount, audited. Owner APIs `/expense-categories/`, `/expenses/` (+ `void` action, no delete → 405, amount immutable after create). `/reports/` (owner-only): `profit` (revenue = Σ completed-sale totals, COGS = Σ qty·unit_cost_snapshot, gross, net = gross − non-voided expenses; Africa/Lagos `today`/`week`/`month`/`custom` ranges, end-inclusive), `best-sellers`, `slow-movers`, `inventory` (stock value + low-stock). 24 tests (freezegun-dated). |
-| 14 | Discounts, approvals, rare returns, refunds, protected adjustments | 🔄 | **14A ✅ (committed):** `ApprovalRequest`, `SaleReturn` (unique `(branch, client_return_id)`), `SaleReturnItem` (+`condition` RESELLABLE / DAMAGED_OR_OPENED), `Refund` (`issued_by`, amount>0). `submit_return_request` / `reject_return` / `approve_return` (owner-only, atomic, `select_for_update`, idempotent via `client_return_id`, ≤ sold−returned, original price+cost snapshots, RESELLABLE → `RETURN` movement + reverse COGS / DAMAGED → no restore, sale → PARTIALLY_RETURNED/RETURNED, receipt untouched). `adjust_stock` (owner, direction+positive qty+detailed reason, never negative, `select_for_update`, idempotent, audit before/after). APIs `/sales/{id}/return-requests/`, `/approvals/` (+approve/reject), `/returns/`, `/inventory/adjustments/`. `profit_report`/`best_sellers` net approved returns. 45 tests incl. 2 real-thread concurrency. **14B ⏳:** owner-approved fixed-Naira discount on an internal DRAFT sale (approval tied to exact draft contents; invalidated by cart/price change; atomic idempotent finalisation; discount allocated across items in minor units; returns refund net-of-discount). |
+| 14 | Discounts, approvals, rare returns, refunds, protected adjustments | ✅ | **14A:** `ApprovalRequest`, `SaleReturn` (unique `(branch, client_return_id)`), `SaleReturnItem` (+`condition` RESELLABLE / DAMAGED_OR_OPENED), `Refund` (`issued_by`, amount>0). `submit_return_request` / `reject_return` / `approve_return` (owner-only, atomic, `select_for_update`, idempotent via `client_return_id`, ≤ sold−returned, original price+cost snapshots, RESELLABLE → `RETURN` movement + reverse COGS / DAMAGED → no restore, sale → PARTIALLY_RETURNED/RETURNED, receipt untouched). `adjust_stock` (owner, direction+positive qty+detailed reason, never negative, `select_for_update`, idempotent, audit before/after). `profit_report`/`best_sellers` net approved returns. **14B:** internal DRAFT sale (`create_draft_sale` — no payment/receipt/movement/report), `replace_draft_cart` (auto-supersedes a pending discount), `request_discount` (cashier, fixed Naira, reason, 0 < amount < subtotal), `approve_discount`/`reject_discount` (owner only), `finalise_draft` (atomic + idempotent + `select_for_update`; re-checks stock & active prices via a draft fingerprint → `approval_stale`; allocates the fixed discount across items in kobo by largest-remainder so parts sum exactly; cost snapshot taken at finalisation; payments == subtotal − discount; assigns receipt number). Discounted returns refund **net of discount** with a running kobo allocation (partial returns never over-refund; full return == final amount paid). Receipt shows Subtotal / Discount / Final total (PDF + JSON). APIs: `/sales/drafts/`, `/sales/{id}/{draft-cart,discount-requests,finalise,cancel}/`, polymorphic `/approvals/{id}/{approve,reject}/`, `/sales/{id}/return-requests/`, `/returns/`, `/inventory/adjustments/`. 83 tests incl. 3 real-thread PostgreSQL concurrency (approve-once, adjust-once, finalise-once). |
 | 15 | Notifications | ⏳ | |
 | 16 | One-device offline fixed-price checkout + idempotent sync | ⏳ | |
 | 17 | Security hardening, CI, monitoring, deployment, backup/restore docs | ⏳ | Redis required. |
@@ -44,17 +44,17 @@ Legend: ✅ done & verified · 🔄 active · ⏳ pending · ⚠️ blocked
 - `27d9d2e` — **Stage 11** (fully-paid sales, split payments, receipt numbering).
 - `29ef932` — **Stage 12** (A4 paid-receipt PDF + JSON receipt).
 - `6f9c6b6` — **Stage 13** (expenses + profit reports).
-- **Stage 14A** — returns, refunds, protected stock adjustments (Stage 14 still
-  IN PROGRESS: the owner-approved discount workflow, 14B, remains).
+- `1211ca0` — **Stage 14A** (returns, refunds, protected stock adjustments).
+- **Stage 14B** — owner-approved fixed-Naira discount workflow (completes Stage 14).
 - Branch `setup/backend-foundation`. `.env` excluded (git-ignored); `openapi.yml`
   and `docs/PROGRESS.md` committed in each.
 
-## Test suite — 2026-08-27 (through Stage 14A)
+## Test suite — 2026-08-27 (through Stage 14)
 
 ```
-pytest --collect-only -q  -> 238 tests collected
-pytest --create-db        -> 238 passed, 0 failed, 0 skipped   (PostgreSQL 18)
-coverage                  -> 92% lines
+pytest --collect-only -q  -> 276 tests collected
+pytest --create-db        -> 276 passed, 0 failed, 0 skipped   (PostgreSQL 18)
+coverage                  -> 93% lines
 ruff check .              -> All checks passed
 ruff format --check .     -> clean
 manage.py check           -> 0 issues
@@ -63,7 +63,7 @@ spectacular --validate    -> exit 0, 0 warnings, 0 errors (openapi.yml)
 check --deploy (prod)     -> 0 issues
 ```
 
-### Collected test inventory (238, through Stage 14)
+### Collected test inventory (276, through Stage 14)
 
 | File | Tests |
 |---|---|
@@ -82,6 +82,9 @@ check --deploy (prod)     -> 0 issues
 | inventory/tests/test_weighted_cost.py | 7 |
 | sales/tests/test_concurrency.py | 2 |
 | sales/tests/test_create_sale.py | 19 |
+| sales/tests/test_discounts.py | 24 |
+| sales/tests/test_discounts_api.py | 13 |
+| sales/tests/test_discounts_concurrency.py | 1 |
 | sales/tests/test_receipts.py | 20 |
 | sales/tests/test_returns.py | 18 |
 | sales/tests/test_returns_api.py | 12 |
@@ -90,12 +93,10 @@ check --deploy (prod)     -> 0 issues
 | finance/tests/test_expenses.py | 14 |
 | finance/tests/test_reports.py | 10 |
 | finance/tests/test_reports_returns.py | 4 |
-| **Total** | **238** |
+| **Total** | **276** |
 
-Known remaining in Stage 14 scope: the DISCOUNT approval flow against an internal
-DRAFT sale (blueprint Stage 8 item 2). `ApprovalType.DISCOUNT` exists; the
-generic `ApprovalRequest` model supports it. The user's confirmed Stage-14 rules
-covered returns / refunds / protected adjustments only, all of which are done.
+Stage 14 is complete: 14A (returns / refunds / protected adjustments) +
+14B (owner-approved fixed-Naira discount on an internal DRAFT sale).
 
 (Stages 1–10 alone: 112.)
 
@@ -254,6 +255,29 @@ report 112, 0 skipped:
   makemigrations --check / check --deploy clean; `openapi.yml` regenerated +
   validated (0 warnings, 0 errors — payment-method / condition enums de-duped via
   shared `.choices`).
-- 2026-08-27: committed the verified part as **Stage 14A** (returns, refunds,
-  protected stock adjustments). Stage 14 stays IN PROGRESS — 14B (owner-approved
-  fixed-Naira discount workflow on a DRAFT sale) is next, under TDD.
+- 2026-08-27: **Stage 14A** committed as `1211ca0` (returns, refunds, protected
+  stock adjustments). Stage 14 kept IN PROGRESS pending the discount workflow.
+- 2026-08-27: **Stage 14B** — owner-approved fixed-Naira discount on an internal
+  DRAFT sale. `apps/sales/services/discounts.py`: `create_draft_sale` (no
+  payment / receipt / stock movement / report entry), `replace_draft_cart`
+  (auto-supersedes a pending discount request → REJECTED), `request_discount`
+  (cashier; fixed Naira; reason required; 0 < amount < subtotal), `approve_discount`
+  / `reject_discount` (owner only; rejection has no side effects, reverts to
+  DRAFT), `finalise_draft` (one `transaction.atomic()`, `select_for_update` on the
+  sale, idempotent via a COMPLETED short-circuit; re-checks stock and current
+  active prices against a draft **fingerprint** — cart edit or price change →
+  `approval_stale`; `allocate_discount` splits the fixed discount across items in
+  kobo by largest remainder so the parts sum exactly; cost snapshot taken at
+  finalisation; payments == subtotal − approved discount; receipt number
+  assigned). `returns.approve_return` now refunds the **net paid** amount for
+  discounted lines via a running kobo allocation — partial returns never
+  over-refund and a full return equals the final amount paid. The receipt
+  (PDF + JSON) shows Subtotal / Owner-approved discount / Final total. APIs:
+  `POST /api/v1/sales/drafts/`, `/sales/{id}/{draft-cart,discount-requests,finalise,cancel}/`,
+  polymorphic `/api/v1/approvals/{id}/{approve,reject}/` (return or discount).
+  `create_sale`'s helpers `merge_cart` / `validate_payments` /
+  `next_receipt_number` promoted to public names and shared. 38 tests incl. a
+  real-thread PostgreSQL concurrency test (two parallel finalisations → one
+  completed sale, one payment, one SALE movement). Full battery: **276 passed**,
+  93% coverage; ruff / check / makemigrations --check / check --deploy clean;
+  `openapi.yml` regenerated + validated (0 warnings, 0 errors). Stage 14 complete.

@@ -59,7 +59,7 @@ class _Priced:
     balance: object = field(default=None)
 
 
-def _merge_cart(cart: list[CartLine]) -> dict:
+def merge_cart(cart: list[CartLine]) -> dict:
     if not cart:
         raise APIError("The cart is empty.", code="empty_cart")
     merged: dict = {}
@@ -74,7 +74,7 @@ def _merge_cart(cart: list[CartLine]) -> dict:
     return merged
 
 
-def _validate_payments(payments: list[PaymentLine], total: Decimal) -> Decimal:
+def validate_payments(payments: list[PaymentLine], total: Decimal) -> Decimal:
     if not payments:
         raise APIError("At least one payment is required.", code="payment_required")
     running = ZERO
@@ -113,7 +113,7 @@ def _validate_payments(payments: list[PaymentLine], total: Decimal) -> Decimal:
     return to_money(change_due)
 
 
-def _next_receipt_number(branch) -> str:
+def next_receipt_number(branch) -> str:
     business_date = timezone.localdate()
     sequence, _ = ReceiptSequence.objects.select_for_update().get_or_create(
         branch=branch, business_date=business_date, defaults={"last_number": 0}
@@ -164,7 +164,7 @@ def create_sale(
         )
 
     # --- Cart --------------------------------------------------------- #
-    merged = _merge_cart(cart)
+    merged = merge_cart(cart)
     variant_ids = list(merged)
     variants = {
         v.id: v
@@ -219,7 +219,7 @@ def create_sale(
             "The discount cannot exceed the subtotal.", code="invalid_discount"
         )
     total = to_money(subtotal - discount_total)
-    change_due = _validate_payments(payments, total)
+    change_due = validate_payments(payments, total)
 
     # --- Persist --------------------------------------------------- #
     # A savepoint so a lost idempotency-key race doesn't poison the whole
@@ -289,7 +289,7 @@ def create_sale(
             reference_id=sale.id,
         )
 
-    sale.receipt_number = _next_receipt_number(branch)
+    sale.receipt_number = next_receipt_number(branch)
     sale.change_due = change_due
     sale.status = SaleStatus.COMPLETED
     sale.completed_at = timezone.now()

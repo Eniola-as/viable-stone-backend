@@ -72,7 +72,7 @@ paths:
   /api/v1/approvals/{id}/approve/:
     post:
       operationId: approvals_approve_create
-      summary: Approve a return request (owner)
+      summary: Approve a pending request (owner) — return or discount
       parameters:
       - in: path
         name: id
@@ -107,7 +107,7 @@ paths:
   /api/v1/approvals/{id}/reject/:
     post:
       operationId: approvals_reject_create
-      summary: Reject a return request (owner)
+      summary: Reject a pending request (owner) — return or discount
       parameters:
       - in: path
         name: id
@@ -2351,6 +2351,134 @@ paths:
               schema:
                 $ref: '#/components/schemas/SaleRead'
           description: ''
+  /api/v1/sales/{id}/cancel/:
+    post:
+      operationId: sales_cancel_create
+      summary: Cancel a DRAFT sale
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this sale.
+        required: true
+      tags:
+      - Sales
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaleRead'
+          description: ''
+  /api/v1/sales/{id}/discount-requests/:
+    post:
+      operationId: sales_discount_requests_create
+      summary: Request an owner-approved fixed-Naira discount on a draft
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this sale.
+        required: true
+      tags:
+      - Approvals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscountRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DiscountRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DiscountRequestRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalRequest'
+          description: ''
+  /api/v1/sales/{id}/draft-cart/:
+    put:
+      operationId: sales_draft_cart_update
+      summary: Replace the cart of a DRAFT sale (invalidates any pending discount)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this sale.
+        required: true
+      tags:
+      - Sales
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftCartRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DraftCartRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DraftCartRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaleRead'
+          description: ''
+  /api/v1/sales/{id}/finalise/:
+    post:
+      operationId: sales_finalise_create
+      summary: Finalise an approved DRAFT into a completed, paid sale
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this sale.
+        required: true
+      tags:
+      - Sales
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinaliseDraftRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FinaliseDraftRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FinaliseDraftRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaleRead'
+          description: ''
   /api/v1/sales/{id}/receipt/:
     get:
       operationId: sales_receipt_retrieve
@@ -2376,6 +2504,7 @@ paths:
   /api/v1/sales/{id}/receipt.pdf:
     get:
       operationId: sales_receipt.pdf_retrieve
+      summary: A4 paid-receipt PDF
       parameters:
       - in: path
         name: id
@@ -2384,20 +2513,21 @@ paths:
           format: uuid
         required: true
       tags:
-      - sales
+      - Sales
       security:
       - cookieAuth: []
       responses:
         '200':
           content:
-            application/json:
+            application/pdf:
               schema:
-                $ref: '#/components/schemas/SaleRead'
+                type: string
+                format: binary
           description: ''
   /api/v1/sales/{id}/return-requests/:
     post:
       operationId: sales_return_requests_create
-      summary: A4 paid-receipt PDF
+      summary: Submit a return request for a completed sale
       parameters:
       - in: path
         name: id
@@ -2407,7 +2537,7 @@ paths:
         description: A UUID string identifying this sale.
         required: true
       tags:
-      - Sales
+      - Approvals
       requestBody:
         content:
           application/json:
@@ -2423,12 +2553,38 @@ paths:
       security:
       - cookieAuth: []
       responses:
-        '200':
+        '201':
           content:
-            application/pdf:
+            application/json:
               schema:
-                type: string
-                format: binary
+                $ref: '#/components/schemas/ApprovalRequest'
+          description: ''
+  /api/v1/sales/drafts/:
+    post:
+      operationId: sales_drafts_create
+      summary: Create an internal DRAFT sale (not a quotation)
+      tags:
+      - Sales
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DraftCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DraftCreateRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaleRead'
           description: ''
   /api/v1/stock-counts/:
     get:
@@ -3683,6 +3839,45 @@ components:
       description: |-
         * `INCREASE` - INCREASE
         * `DECREASE` - DECREASE
+    DiscountRequestRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required:
+      - amount
+      - reason
+    DraftCartRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/_CartLineRequest'
+      required:
+      - items
+    DraftCreateRequest:
+      type: object
+      properties:
+        client_sale_id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/_CartLineRequest'
+        customer:
+          type: object
+          additionalProperties: {}
+      required:
+      - client_sale_id
+      - items
     Expense:
       type: object
       properties:
@@ -3816,6 +4011,18 @@ components:
           maxLength: 500
       required:
       - reason
+    FinaliseDraftRequest:
+      type: object
+      properties:
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/_PaymentLineRequest'
+        client_finalize_id:
+          type: string
+          format: uuid
+      required:
+      - payments
     Health:
       type: object
       properties:
@@ -6481,6 +6688,39 @@ components:
       - email
       - name
       - phone
+    _CartLineRequest:
+      type: object
+      properties:
+        variant:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+      required:
+      - quantity
+      - variant
+    _PaymentLineRequest:
+      type: object
+      properties:
+        method:
+          $ref: '#/components/schemas/MethodEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        tendered_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          nullable: true
+        reference:
+          type: string
+          default: ''
+          maxLength: 150
+      required:
+      - amount
+      - method
     _ReceiptItem:
       type: object
       properties:

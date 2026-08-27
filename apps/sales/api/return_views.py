@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.permissions import IsAuthenticatedAndMFAVerified, IsOwner
+from apps.sales.api.discount_serializers import ApproveDiscountSerializer
 from apps.sales.api.return_serializers import (
     ApprovalRequestSerializer,
     ApproveReturnSerializer,
@@ -16,6 +17,7 @@ from apps.sales.models import (
     ApprovalType,
     SaleReturn,
 )
+from apps.sales.services.discounts import approve_discount, reject_discount
 from apps.sales.services.returns import (
     ApprovedLine,
     RefundLine,
@@ -47,26 +49,27 @@ class ApprovalViewSet(
             qs = qs.filter(requested_by_id=user.id)
         return qs
 
-    def _pending_return(self):
-        approval = self.get_object()
-        if approval.request_type != ApprovalType.RETURN:
-            from apps.core.exceptions import APIError
-
-            raise APIError(
-                "This endpoint only handles return approvals.",
-                code="not_a_return",
-            )
-        return approval
-
     @extend_schema(
         request=ApproveReturnSerializer,
         responses={200: SaleReturnReadSerializer},
-        summary="Approve a return request (owner)",
+        summary="Approve a pending request (owner) — return or discount",
         tags=["Approvals"],
     )
     @action(detail=True, methods=["post"], permission_classes=[IsOwner])
     def approve(self, request, pk=None):
-        approval = self._pending_return()
+        approval = self.get_object()
+        if approval.request_type == ApprovalType.DISCOUNT:
+            serializer = ApproveDiscountSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            approved = approve_discount(
+                approval=approval,
+                owner=request.user,
+                amount=serializer.validated_data["amount"],
+                reviewer_note=serializer.validated_data.get("reviewer_note", ""),
+                request=request,
+            )
+            return Response(ApprovalRequestSerializer(approved).data)
+
         serializer = ApproveReturnSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -100,19 +103,22 @@ class ApprovalViewSet(
     @extend_schema(
         request=RejectReturnSerializer,
         responses={200: ApprovalRequestSerializer},
-        summary="Reject a return request (owner)",
+        summary="Reject a pending request (owner) — return or discount",
         tags=["Approvals"],
     )
     @action(detail=True, methods=["post"], permission_classes=[IsOwner])
     def reject(self, request, pk=None):
-        approval = self._pending_return()
+        approval = self.get_object()
         serializer = RejectReturnSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        rejected = reject_return(
-            approval=approval,
-            owner=request.user,
-            reviewer_note=serializer.validated_data.get("reviewer_note", ""),
-            request=request,
+        note = serializer.validated_data.get("reviewer_note", "")
+        reject = (
+            reject_discount
+            if approval.request_type == ApprovalType.DISCOUNT
+            else reject_return
+        )
+        rejected = reject(
+            approval=approval, owner=request.user, reviewer_note=note, request=request
         )
         return Response(ApprovalRequestSerializer(rejected).data)
 

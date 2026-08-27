@@ -7,6 +7,12 @@ from rest_framework.response import Response
 
 from apps.core.exceptions import Conflict
 from apps.core.permissions import IsAuthenticatedAndMFAVerified
+from apps.sales.api.discount_serializers import (
+    DiscountRequestSerializer,
+    DraftCartSerializer,
+    DraftCreateSerializer,
+    FinaliseDraftSerializer,
+)
 from apps.sales.api.return_serializers import (
     ApprovalRequestSerializer,
     ReturnRequestCreateSerializer,
@@ -20,6 +26,7 @@ from apps.sales.api.serializers import (
 )
 from apps.sales.models import Customer, Sale, SaleStatus
 from apps.sales.selectors import sales_visible_to
+from apps.sales.services import discounts as discount_service
 from apps.sales.services.customers import resolve_customer
 from apps.sales.services.receipts import receipt_context, render_receipt_pdf
 from apps.sales.services.returns import RequestLine, submit_return_request
@@ -104,11 +111,6 @@ class SaleViewSet(
         return response
 
     @extend_schema(
-        responses={(200, "application/pdf"): OpenApiTypes.BINARY},
-        summary="A4 paid-receipt PDF",
-        tags=["Sales"],
-    )
-    @extend_schema(
         request=ReturnRequestCreateSerializer,
         responses={201: ApprovalRequestSerializer},
         summary="Submit a return request for a completed sale",
@@ -141,6 +143,122 @@ class SaleViewSet(
             ApprovalRequestSerializer(approval).data, status=status.HTTP_201_CREATED
         )
 
+    # --- Discount workflow on an internal DRAFT sale ------------------- #
+
+    @extend_schema(
+        request=DraftCreateSerializer,
+        responses={201: SaleReadSerializer},
+        summary="Create an internal DRAFT sale (not a quotation)",
+        tags=["Sales"],
+    )
+    @action(detail=False, methods=["post"])
+    def drafts(self, request):
+        serializer = DraftCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        sale = discount_service.create_draft_sale(
+            branch=request.user.branch,
+            cashier=request.user,
+            cart=[
+                CartLine(variant_id=i["variant"], quantity=i["quantity"])
+                for i in data["items"]
+            ],
+            client_sale_id=data["client_sale_id"],
+            customer=resolve_customer(request.user.branch, data.get("customer")),
+            request=request,
+        )
+        return Response(
+            SaleReadSerializer(sale, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        request=DraftCartSerializer,
+        responses={200: SaleReadSerializer},
+        summary="Replace the cart of a DRAFT sale (invalidates any pending discount)",
+        tags=["Sales"],
+    )
+    @action(detail=True, methods=["put"], url_path="draft-cart")
+    def draft_cart(self, request, pk=None):
+        serializer = DraftCartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        sale = discount_service.replace_draft_cart(
+            sale=self.get_object(),
+            cart=[
+                CartLine(variant_id=i["variant"], quantity=i["quantity"])
+                for i in serializer.validated_data["items"]
+            ],
+            request=request,
+        )
+        return Response(SaleReadSerializer(sale, context={"request": request}).data)
+
+    @extend_schema(
+        request=DiscountRequestSerializer,
+        responses={201: ApprovalRequestSerializer},
+        summary="Request an owner-approved fixed-Naira discount on a draft",
+        tags=["Approvals"],
+    )
+    @action(detail=True, methods=["post"], url_path="discount-requests")
+    def discount_requests(self, request, pk=None):
+        serializer = DiscountRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        approval = discount_service.request_discount(
+            sale=self.get_object(),
+            requested_by=request.user,
+            amount=serializer.validated_data["amount"],
+            reason=serializer.validated_data["reason"],
+            request=request,
+        )
+        return Response(
+            ApprovalRequestSerializer(approval).data, status=status.HTTP_201_CREATED
+        )
+
+    @extend_schema(
+        request=FinaliseDraftSerializer,
+        responses={200: SaleReadSerializer},
+        summary="Finalise an approved DRAFT into a completed, paid sale",
+        tags=["Sales"],
+    )
+    @action(detail=True, methods=["post"])
+    def finalise(self, request, pk=None):
+        serializer = FinaliseDraftSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        sale = discount_service.finalise_draft(
+            sale=self.get_object(),
+            cashier=request.user,
+            payments=[
+                PaymentLine(
+                    method=p["method"],
+                    amount=p["amount"],
+                    tendered_amount=p.get("tendered_amount"),
+                    reference=p.get("reference", ""),
+                )
+                for p in data["payments"]
+            ],
+            client_finalize_id=data.get("client_finalize_id"),
+            request=request,
+        )
+        return Response(SaleReadSerializer(sale, context={"request": request}).data)
+
+    @extend_schema(
+        request=None,
+        responses={200: SaleReadSerializer},
+        summary="Cancel a DRAFT sale",
+        tags=["Sales"],
+    )
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        sale = discount_service.cancel_draft(
+            sale=self.get_object(), actor=request.user, request=request
+        )
+        return Response(SaleReadSerializer(sale, context={"request": request}).data)
+
+    @extend_schema(
+        responses={(200, "application/pdf"): OpenApiTypes.BINARY},
+        summary="A4 paid-receipt PDF",
+        tags=["Sales"],
+    )
     def receipt_pdf(self, request, pk=None):
         sale = self._completed_sale_or_conflict()
         pdf = render_receipt_pdf(sale)
