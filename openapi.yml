@@ -2370,7 +2370,7 @@ paths:
       operationId: products_create
       description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
         deletes.
-      summary: Create a product (owner)
+      summary: Create a product with an optional image (owner)
       tags:
       - Catalogue
       requestBody:
@@ -2488,6 +2488,50 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProductWrite'
           description: ''
+  /api/v1/products/{id}/image/:
+    get:
+      operationId: products_image_retrieve
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      summary: Download a product's image (owner or branch employee)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Catalogue
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+          description: ''
+    delete:
+      operationId: products_image_destroy
+      description: Owner writes, everyone (MFA-cleared) reads their branch. No hard
+        deletes.
+      summary: Clear a product's image (owner)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Catalogue
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/v1/push-subscriptions/:
     get:
       operationId: push_subscriptions_list
@@ -4030,7 +4074,7 @@ paths:
     get:
       operationId: variants_list
       description: Write an audit row after create/update/destroy on a viewset.
-      summary: Search variants (by SKU/barcode)
+      summary: Search variants (name, SKU, barcode, colour, size, finish, brand, category)
       parameters:
       - name: ordering
         required: false
@@ -6827,6 +6871,11 @@ components:
           format: uri
           nullable: true
           readOnly: true
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+          readOnly: true
         is_active:
           type: boolean
           readOnly: true
@@ -6852,6 +6901,7 @@ components:
       - description
       - id
       - image
+      - image_url
       - is_active
       - kind
       - name

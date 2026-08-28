@@ -4,12 +4,23 @@ The backend is feature-complete. This document is the acceptance record: what is
 verified automatically, what a human must still check on a running instance, and
 what can only be proven by GitHub Actions.
 
-- **Automated suite:** 636 tests collected, **631 passed, 5 skipped**
+- **Automated suite:** 675 tests collected, **670 passed, 5 skipped**
   (the 5 are real-Redis integration tests, skipped locally because no Redis is
   running; GitHub CI runs them with zero skips).
-- **Coverage:** 93.6 % (gate: ≥ 90 %).
-- **OpenAPI:** `openapi.yml` — 99 paths, 139 operations, 160 component schemas;
+- **Coverage:** 94 % (gate: ≥ 90 %).
+- **OpenAPI:** `openapi.yml` — 100 paths, 141 operations, 160 component schemas;
   regenerates with **no diff** and **zero warnings**.
+
+> **Post-Stage-18 additive correction (2026-08-28):** secure product-image
+> delivery — `GET`/`DELETE /api/v1/products/{id}/image/` (authenticated,
+> branch-scoped, streamed through the storage backend) and an additive
+> `image_url` field on product read responses; signature-checked JPEG/PNG/WebP
+> uploads (5 MB); `variants/?search=` widened to name / SKU / barcode / colour /
+> size / finish / brand / category. Root cause: the private image had no
+> serving route at all (`MEDIA_URL` was unrouted). 39 new tests
+> (`apps/catalog/tests/test_product_images.py`, `test_variant_search.py`);
+> contract snapshot + security classification + branch-isolation matrix updated
+> in step. No model/migration change.
 
 ---
 

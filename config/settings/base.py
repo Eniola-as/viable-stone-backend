@@ -226,6 +226,13 @@ ALLOWED_UPLOAD_MIME_TYPES = [
     "application/pdf",
 ]
 
+# Product images are delivered only through the authenticated, branch-scoped
+# endpoint GET /api/v1/products/{id}/image/ — never a public media URL. Uploads
+# are JPEG/PNG/WebP only (no PDF) and validated by real file signature, not the
+# filename or the client-supplied MIME type. 5 MB hard limit.
+PRODUCT_IMAGE_MAX_BYTES = env.int("PRODUCT_IMAGE_MAX_BYTES", default=5 * 1024 * 1024)
+PRODUCT_IMAGE_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"]
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --------------------------------------------------------------------------- #

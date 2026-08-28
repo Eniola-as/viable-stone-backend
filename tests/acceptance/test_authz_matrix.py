@@ -27,6 +27,7 @@ _AUTHED_ENDPOINTS = [
     ("/users/", "get"),
     ("/audit-logs/", "get"),
     ("/products/", "get"),
+    (f"/products/{uuid.uuid4()}/image/", "get"),
     ("/variants/", "get"),
     ("/suppliers/", "get"),
     ("/restocks/", "get"),
@@ -47,6 +48,7 @@ _AUTHED_ENDPOINTS = [
 
 # Owner-only endpoints: an employee must get 403.
 _OWNER_ONLY = [
+    (f"/products/{uuid.uuid4()}/image/", "delete"),  # employee may GET, not clear
     ("/users/", "get"),
     ("/audit-logs/", "get"),
     ("/suppliers/", "get"),

@@ -164,6 +164,10 @@ def seeded(db, branch, owner, employee, login_as, stocked):
             "detail": f"{API}/products/{product.id}/",
             "list": f"{API}/products/",
         },
+        "product-image": {
+            "detail": f"{API}/products/{product.id}/image/",
+            "list": None,
+        },
         "variant-detail": {
             "detail": f"{API}/variants/{variant.id}/",
             "list": f"{API}/variants/",

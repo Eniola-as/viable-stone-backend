@@ -8,8 +8,13 @@ in `openapi.yml`.
 
 The contract is **frozen**: its path/method/operationId surface is snapshotted
 in `tests/acceptance/openapi_contract_snapshot.json` and a test fails the build
-if it changes without a reviewed update. 99 paths, 139 operations. Treat a
+if it changes without a reviewed update. 100 paths, 141 operations. Treat a
 `code` value or a route change as a breaking-change signal.
+
+> **Additive correction (post-Stage 18):** `GET`/`DELETE
+> /api/v1/products/{id}/image/` and the additive `image_url` field on product
+> read responses. See **Product images** below. No existing field or route
+> changed.
 
 ## API base URL
 
@@ -157,6 +162,40 @@ Client-generated UUIDs make retries safe:
 
 Generate the id **before** the first attempt and reuse it for every retry of
 that logical action.
+
+## Product images
+
+Product images are **private**. They are never served from a static/media URL —
+the only way to load the bytes is the authenticated, branch-scoped endpoint
+below. The bytes stream straight from the storage backend (local disk now, a
+private object store later); no filesystem path or storage key is ever exposed.
+
+* **Upload / replace** — `POST /api/v1/products/` or
+  `PATCH /api/v1/products/{id}/` with **`multipart/form-data`** and the binary
+  field **`image`** (owner only). Unchanged from before.
+  * Accepted: **JPEG, PNG, WebP only.** Max **5 MB**.
+  * The real file signature is checked — not the filename or the `Content-Type`
+    you send. A PDF (or anything else) renamed `photo.jpg`, or a real JPEG sent
+    as `shot.png`, is rejected `400` with `field_errors.image`.
+* **Read** — product read responses now include an additive, stable field
+  **`image_url`**: an absolute URL to
+  `GET /api/v1/products/{id}/image/`, or `null` when the product has no image.
+  Load the picture from `image_url`. (The older `image` field is retained for
+  backwards compatibility and still holds the raw storage reference; do not
+  fetch it directly.)
+* **`GET /api/v1/products/{id}/image/`**
+  * Any authenticated user of the product's branch (owner **or** employee).
+  * Returns the image with the correct `Content-Type`
+    (`image/jpeg` / `image/png` / `image/webp`),
+    `X-Content-Type-Options: nosniff`, and
+    `Cache-Control: private, max-age=300`.
+  * `401` unauthenticated · `404` for a cross-branch id, an unknown id, **or a
+    product that has no image** · (owner-retired `is_active=false` products stay
+    visible to the owner, hidden from employees, same as elsewhere).
+* **`DELETE /api/v1/products/{id}/image/`** — owner only. Clears the image and
+  removes the stored file. `204` on success; `403` for an employee; `404` when
+  there is no image to clear. Product creation/replacement still uses the
+  `multipart` `image` field above.
 
 ## Receipts / PDF
 

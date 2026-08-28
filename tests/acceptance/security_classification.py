@@ -85,6 +85,9 @@ CLASSIFICATION: dict[str, set[str]] = {
     "variant-price": {"owner", "branch_scoped", "write"},
     "variant-price-history": {"authenticated", "branch_scoped", "read"},
     "variant-current-price-view": {"authenticated", "branch_scoped", "read"},
+    # GET: owner or a branch employee downloads the image bytes (streamed via
+    # storage). DELETE: owner clears it. Cross-branch / unknown id -> 404.
+    "product-image": {"authenticated", "read", "owner", "write", "branch_scoped"},
     # --- inventory (owner only) ------------------------------------- #
     **{
         name: {"owner", "branch_scoped", "read", "write"}

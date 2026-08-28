@@ -80,6 +80,8 @@
     "offline_sync_records_retrieve",
     "offline_temporary_receipt_create",
     "products_create",
+    "products_image_destroy",
+    "products_image_retrieve",
     "products_list",
     "products_partial_update",
     "products_retrieve",
@@ -346,6 +348,10 @@
       "get",
       "patch",
       "put"
+    ],
+    "/api/v1/products/{id}/image/": [
+      "delete",
+      "get"
     ],
     "/api/v1/push-subscriptions/": [
       "get",

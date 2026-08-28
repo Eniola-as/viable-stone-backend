@@ -1,10 +1,12 @@
 from decimal import Decimal
 
+from django.urls import reverse
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.catalog.models import Brand, Category, PriceHistory, Product, ProductVariant
 from apps.catalog.selectors import current_price
+from apps.catalog.validators import validate_product_image
 from apps.core.serializers import (
     ControlCharSafeModelSerializer,
     ControlCharSafeSerializer,
@@ -109,6 +111,13 @@ class ProductWriteSerializer(ControlCharSafeModelSerializer):
         ]
         read_only_fields = ["id"]
 
+    def validate_image(self, image):
+        # ``multipart/form-data`` only. Signature-checked: JPEG/PNG/WebP, ≤5 MB,
+        # extension must match real content. A disguised PDF is rejected here.
+        if image:
+            validate_product_image(image)
+        return image
+
     def validate(self, attrs):
         request = self.context["request"]
         branch_id = request.user.branch_id
@@ -131,6 +140,7 @@ class ProductReadSerializer(ControlCharSafeModelSerializer):
         source="brand.name", read_only=True, default=None
     )
     variants = ProductVariantReadSerializer(many=True, read_only=True)
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -144,12 +154,27 @@ class ProductReadSerializer(ControlCharSafeModelSerializer):
             "name",
             "description",
             "image",
+            "image_url",
             "is_active",
             "variants",
             "created_at",
             "updated_at",
         ]
         read_only_fields = fields
+
+    @extend_schema_field({"type": "string", "format": "uri", "nullable": True})
+    def get_image_url(self, product) -> str | None:
+        """Stable authenticated URL for the image bytes, or ``None``.
+
+        The raw ``image`` field is the private storage reference and is not
+        directly fetchable; clients load the picture from here.
+        """
+
+        if not product.image:
+            return None
+        path = reverse("api:product-image", kwargs={"pk": product.pk})
+        request = self.context.get("request")
+        return request.build_absolute_uri(path) if request is not None else path
 
 
 class SetPriceSerializer(ControlCharSafeSerializer):
