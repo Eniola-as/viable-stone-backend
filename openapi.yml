@@ -72,7 +72,14 @@ paths:
   /api/v1/approvals/{id}/approve/:
     post:
       operationId: approvals_approve_create
-      summary: Approve a pending request (owner) — return or discount
+      description: |-
+        Polymorphic on the approval's `request_type` (read it from `GET /api/v1/approvals/{id}/` first):
+
+        * `DISCOUNT` — body `{amount, reviewer_note?}`; returns the updated `ApprovalRequest`.
+        * `RETURN` — body `{lines[], refunds[], reviewer_note?, client_return_id?}`; returns the created `SaleReturn`.
+
+        Sending the wrong body yields `400` naming the missing field(s) (`amount`, or `lines`/`refunds`).
+      summary: Approve a pending request (owner)
       parameters:
       - in: path
         name: id
@@ -87,14 +94,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ApproveReturnRequest'
+              $ref: '#/components/schemas/ApproveRequestRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/ApproveReturnRequest'
+              $ref: '#/components/schemas/ApproveRequestRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/ApproveReturnRequest'
-        required: true
+              $ref: '#/components/schemas/ApproveRequestRequest'
       security:
       - cookieAuth: []
       responses:
@@ -102,7 +108,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SaleReturnRead'
+                $ref: '#/components/schemas/ApproveResult'
           description: ''
   /api/v1/approvals/{id}/reject/:
     post:
@@ -4428,6 +4434,27 @@ components:
         * `PENDING` - Pending
         * `APPROVED` - Approved
         * `REJECTED` - Rejected
+    ApproveDiscountRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        reviewer_note:
+          type: string
+          default: ''
+          maxLength: 2000
+      required:
+      - amount
+    ApproveRequestRequest:
+      oneOf:
+      - $ref: '#/components/schemas/ApproveReturnRequest'
+      - $ref: '#/components/schemas/ApproveDiscountRequest'
+    ApproveResult:
+      oneOf:
+      - $ref: '#/components/schemas/SaleReturnRead'
+      - $ref: '#/components/schemas/ApprovalRequest'
     ApproveReturnRequest:
       type: object
       properties:

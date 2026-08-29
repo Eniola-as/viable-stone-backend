@@ -1,4 +1,8 @@
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import (
+    PolymorphicProxySerializer,
+    extend_schema,
+    extend_schema_view,
+)
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -23,6 +27,27 @@ from apps.sales.services.returns import (
     RefundLine,
     approve_return,
     reject_return,
+)
+
+# ``POST /api/v1/approvals/{id}/approve/`` is polymorphic: the body and the
+# response depend on the approval's ``request_type`` (read it from the list /
+# detail representation first). The path resource is the discriminator, so this
+# is a plain ``oneOf`` with no in-body type field.
+_APPROVE_REQUEST = PolymorphicProxySerializer(
+    component_name="ApproveRequest",
+    serializers={
+        ApprovalType.RETURN.value: ApproveReturnSerializer,
+        ApprovalType.DISCOUNT.value: ApproveDiscountSerializer,
+    },
+    resource_type_field_name=None,
+)
+_APPROVE_RESPONSE = PolymorphicProxySerializer(
+    component_name="ApproveResult",
+    serializers={
+        ApprovalType.RETURN.value: SaleReturnReadSerializer,
+        ApprovalType.DISCOUNT.value: ApprovalRequestSerializer,
+    },
+    resource_type_field_name=None,
 )
 
 
@@ -50,9 +75,19 @@ class ApprovalViewSet(
         return qs
 
     @extend_schema(
-        request=ApproveReturnSerializer,
-        responses={200: SaleReturnReadSerializer},
-        summary="Approve a pending request (owner) — return or discount",
+        request=_APPROVE_REQUEST,
+        responses={200: _APPROVE_RESPONSE},
+        summary="Approve a pending request (owner)",
+        description=(
+            "Polymorphic on the approval's `request_type` (read it from "
+            "`GET /api/v1/approvals/{id}/` first):\n\n"
+            "* `DISCOUNT` — body `{amount, reviewer_note?}`; returns the updated "
+            "`ApprovalRequest`.\n"
+            "* `RETURN` — body `{lines[], refunds[], reviewer_note?, "
+            "client_return_id?}`; returns the created `SaleReturn`.\n\n"
+            "Sending the wrong body yields `400` naming the missing field(s) "
+            "(`amount`, or `lines`/`refunds`)."
+        ),
         tags=["Approvals"],
     )
     @action(detail=True, methods=["post"], permission_classes=[IsOwner])
