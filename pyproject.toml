@@ -75,6 +75,8 @@ ignore = [
 "config/settings/build.py" = ["F403", "F405", "E402"]
 "**/tests/**" = ["S101"]
 "**/conftest.py" = ["F403", "F405"]
+# seed_demo.py is mostly a wide, hand-kept demo-data table.
+"apps/core/management/commands/seed_demo.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["apps", "config"]
