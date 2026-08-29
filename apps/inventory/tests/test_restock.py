@@ -11,11 +11,62 @@ from apps.inventory.models import (
     RestockStatus,
     StockMovement,
 )
-from apps.inventory.services.restock import confirm_restock
+from apps.inventory.services.restock import confirm_restock, restock_purchase_total
 
 from .factories import RestockFactory, SupplierFactory
 
 pytestmark = pytest.mark.django_db
+
+
+class TestRestockPurchaseTotal:
+    """The purchase total is the exact Decimal sum of quantity * unit_cost."""
+
+    def test_one_item(self, branch, owner):
+        restock, _ = _restock_with_items(branch, owner, [(13, "1200.00")])
+        assert restock_purchase_total(restock) == Decimal("15600.00")
+
+    def test_multiple_items(self, branch, owner):
+        restock, _ = _restock_with_items(
+            branch, owner, [(13, "1200.00"), (4, "250.00"), (1, "0.99")]
+        )
+        assert restock_purchase_total(restock) == Decimal("16600.99")
+
+    def test_exact_decimal_arithmetic(self, branch, owner):
+        restock, _ = _restock_with_items(branch, owner, [(7, "1200.33"), (3, "0.01")])
+        assert restock_purchase_total(restock) == Decimal("8402.34")
+
+    def test_empty_restock_total_is_zero(self, branch, owner):
+        restock = RestockFactory(branch=branch, created_by=owner)
+        assert restock_purchase_total(restock) == Decimal("0.00")
+
+    def test_tracks_item_add_and_remove(self, branch, owner):
+        restock, items = _restock_with_items(
+            branch, owner, [(13, "1200.00"), (4, "250.00")]
+        )
+        assert restock_purchase_total(restock) == Decimal("16600.00")
+        items[1].delete()
+        assert restock_purchase_total(restock) == Decimal("15600.00")
+        RestockItem.objects.create(
+            restock=restock,
+            variant=ProductVariantFactory(product=items[0].variant.product),
+            quantity=2,
+            unit_cost=Decimal("500.00"),
+        )
+        assert restock_purchase_total(restock) == Decimal("16600.00")
+
+    def test_draft_total_is_stored_and_matches_confirmed(self, branch, owner):
+        restock, _ = _restock_with_items(
+            branch, owner, [(13, "1200.00"), (4, "250.00")]
+        )
+        # a draft built through the service helper carries the real total
+        restock.total_cost = restock_purchase_total(restock)
+        restock.save(update_fields=["total_cost", "updated_at"])
+        assert restock.total_cost == Decimal("16600.00")
+        assert StockMovement.objects.filter(branch=branch).count() == 0  # still draft
+
+        confirm_restock(restock=restock, confirmed_by=owner)
+        restock.refresh_from_db()
+        assert restock.total_cost == Decimal("16600.00")  # unchanged by confirm
 
 
 def _restock_with_items(branch, owner, lines):

@@ -30,6 +30,122 @@ class TestSupplierIsOwnerOnly:
         assert login_as(owner).delete(f"{SUPPLIERS}{supplier.id}/").status_code == 405
 
 
+def _create_draft(client, supplier, items):
+    return client.post(
+        RESTOCKS,
+        {"supplier": str(supplier.id), "date": "2026-08-01", "items": items},
+        format="json",
+    )
+
+
+class TestDraftRestockTotal:
+    """``total_cost`` is the server-calculated purchase total of the delivery —
+    the exact Decimal sum of every item's ``quantity * unit_cost`` — for a DRAFT
+    just as for a CONFIRMED restock. It is not zero until confirmation."""
+
+    def test_draft_total_cost_equals_the_sum_of_line_totals(
+        self, login_as, owner, branch
+    ):
+        supplier = SupplierFactory(branch=branch)
+        product = ProductFactory(branch=branch)
+        v1 = ProductVariantFactory(product=product)
+        v2 = ProductVariantFactory(product=product)
+        client = login_as(owner)
+
+        # the reproduction case: one line of 13 @ 1200.00 = 15600.00, plus another
+        rid = _create_draft(
+            client,
+            supplier,
+            [
+                {"variant": str(v1.id), "quantity": 13, "unit_cost": "1200.00"},
+                {"variant": str(v2.id), "quantity": 4, "unit_cost": "250.00"},
+            ],
+        ).json()["id"]
+
+        body = client.get(f"{RESTOCKS}{rid}/").json()
+        assert body["status"] == "DRAFT"
+        line_sum = sum(Decimal(i["line_total"]) for i in body["items"])
+        assert line_sum == Decimal("16600.00")
+        assert Decimal(body["total_cost"]) == Decimal("16600.00")
+        assert body["total_cost"] == "16600.00"
+
+        # nothing moved while it is a draft
+        assert not InventoryBalance.objects.filter(branch=branch).exists()
+
+    def test_single_item_draft_total(self, login_as, owner, branch):
+        supplier = SupplierFactory(branch=branch)
+        variant = ProductVariantFactory(product=ProductFactory(branch=branch))
+        client = login_as(owner)
+        rid = _create_draft(
+            client,
+            supplier,
+            [{"variant": str(variant.id), "quantity": 13, "unit_cost": "1200.00"}],
+        ).json()["id"]
+        assert client.get(f"{RESTOCKS}{rid}/").json()["total_cost"] == "15600.00"
+
+    def test_draft_total_is_exact_decimal(self, login_as, owner, branch):
+        supplier = SupplierFactory(branch=branch)
+        product = ProductFactory(branch=branch)
+        v1 = ProductVariantFactory(product=product)
+        v2 = ProductVariantFactory(product=product)
+        client = login_as(owner)
+        rid = _create_draft(
+            client,
+            supplier,
+            [
+                {"variant": str(v1.id), "quantity": 7, "unit_cost": "1200.33"},
+                {"variant": str(v2.id), "quantity": 3, "unit_cost": "0.01"},
+            ],
+        ).json()["id"]
+        # 7 * 1200.33 = 8402.31 ; 3 * 0.01 = 0.03
+        assert client.get(f"{RESTOCKS}{rid}/").json()["total_cost"] == "8402.34"
+
+    def test_draft_total_survives_confirmation_unchanged(self, login_as, owner, branch):
+        supplier = SupplierFactory(branch=branch)
+        product = ProductFactory(branch=branch)
+        v1 = ProductVariantFactory(product=product)
+        v2 = ProductVariantFactory(product=product)
+        client = login_as(owner)
+        rid = _create_draft(
+            client,
+            supplier,
+            [
+                {"variant": str(v1.id), "quantity": 13, "unit_cost": "1200.00"},
+                {"variant": str(v2.id), "quantity": 4, "unit_cost": "250.00"},
+            ],
+        ).json()["id"]
+        draft_total = client.get(f"{RESTOCKS}{rid}/").json()["total_cost"]
+        confirmed = client.post(f"{RESTOCKS}{rid}/confirm/").json()
+        assert confirmed["total_cost"] == draft_total == "16600.00"
+
+    def test_editing_draft_metadata_keeps_the_total(self, login_as, owner, branch):
+        supplier = SupplierFactory(branch=branch)
+        variant = ProductVariantFactory(product=ProductFactory(branch=branch))
+        client = login_as(owner)
+        rid = _create_draft(
+            client,
+            supplier,
+            [{"variant": str(variant.id), "quantity": 13, "unit_cost": "1200.00"}],
+        ).json()["id"]
+        patched = client.patch(
+            f"{RESTOCKS}{rid}/", {"supplier_invoice_number": "INV-9"}, format="json"
+        )
+        assert patched.status_code == 200, patched.content
+        assert client.get(f"{RESTOCKS}{rid}/").json()["total_cost"] == "15600.00"
+
+    def test_restock_totals_never_leak_to_an_employee(self, login_as, owner, branch):
+        supplier = SupplierFactory(branch=branch)
+        variant = ProductVariantFactory(product=ProductFactory(branch=branch))
+        rid = _create_draft(
+            login_as(owner),
+            supplier,
+            [{"variant": str(variant.id), "quantity": 13, "unit_cost": "1200.00"}],
+        ).json()["id"]
+        emp = EmployeeFactory(branch=branch)
+        assert login_as(emp).get(f"{RESTOCKS}{rid}/").status_code == 403
+        assert login_as(emp).get(RESTOCKS).status_code == 403
+
+
 class TestRestockFlow:
     def test_create_draft_then_confirm(self, login_as, owner, branch):
         supplier = SupplierFactory(branch=branch)

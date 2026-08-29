@@ -8,10 +8,25 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.exceptions import APIError, Conflict
-from apps.core.money import to_money, weighted_average_cost
+from apps.core.money import ZERO, to_money, weighted_average_cost
 from apps.core.services.audit import record_audit
 from apps.inventory.models import MovementType, Restock, RestockStatus
 from apps.inventory.services.stock import lock_balances, write_movement
+
+
+def restock_purchase_total(restock: Restock) -> Decimal:
+    """The purchase total of the delivery: the exact Decimal sum of every
+    item's ``quantity * unit_cost``, rounded to kobo.
+
+    This is the meaning of ``Restock.total_cost`` in every state — a DRAFT
+    header carries the same total as it will after confirmation. Confirmation
+    applies stock and weighted-average cost; it does not change this arithmetic.
+    """
+
+    total = ZERO
+    for quantity, unit_cost in restock.items.values_list("quantity", "unit_cost"):
+        total += Decimal(quantity) * unit_cost
+    return to_money(total)
 
 
 @transaction.atomic
@@ -41,13 +56,11 @@ def confirm_restock(*, restock: Restock, confirmed_by, request=None) -> Restock:
 
     balances = lock_balances(locked.branch, [i.variant_id for i in items])
     now = timezone.now()
-    total = Decimal("0.00")
 
     for item in items:
         balance = balances[item.variant_id]
         item.line_total = to_money(Decimal(item.quantity) * item.unit_cost)
         item.save(update_fields=["line_total"])
-        total += item.line_total
 
         balance.average_unit_cost = weighted_average_cost(
             old_quantity=balance.quantity,
@@ -69,7 +82,9 @@ def confirm_restock(*, restock: Restock, confirmed_by, request=None) -> Restock:
     locked.status = RestockStatus.CONFIRMED
     locked.confirmed_by = confirmed_by
     locked.confirmed_at = now
-    locked.total_cost = to_money(total)
+    # Same purchase total as the draft carried — recomputed from the items as
+    # the single source of truth.
+    locked.total_cost = restock_purchase_total(locked)
     locked.save(
         update_fields=[
             "status",

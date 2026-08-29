@@ -35,7 +35,7 @@ from apps.inventory.selectors import (
     stock_value_for_branch,
 )
 from apps.inventory.services.adjustments import adjust_stock
-from apps.inventory.services.restock import confirm_restock
+from apps.inventory.services.restock import confirm_restock, restock_purchase_total
 from apps.inventory.services.stock import open_stock
 from apps.inventory.services.stock_count import apply_stock_count, submit_stock_count
 
@@ -92,6 +92,14 @@ class RestockViewSet(BranchScopedQuerysetMixin, viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         self._reject_if_confirmed()
         return super().update(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        restock = serializer.save()
+        # Keep the header total consistent with whatever items the draft holds.
+        new_total = restock_purchase_total(restock)
+        if restock.total_cost != new_total:
+            restock.total_cost = new_total
+            restock.save(update_fields=["total_cost", "updated_at"])
 
     def destroy(self, request, *args, **kwargs):
         self._reject_if_confirmed()

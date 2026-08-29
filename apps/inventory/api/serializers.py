@@ -20,6 +20,7 @@ from apps.inventory.models import (
     StockMovement,
     Supplier,
 )
+from apps.inventory.services.restock import restock_purchase_total
 
 _MONEY_FIELD = serializers.DecimalField(
     max_digits=18, decimal_places=2, allow_null=True
@@ -93,13 +94,17 @@ class RestockWriteSerializer(ControlCharSafeModelSerializer):
         return items
 
     def validate(self, attrs):
+        # ``attrs`` only carries the fields present in the request, so a partial
+        # update (PATCH of e.g. supplier_invoice_number on a draft) must not
+        # assume ``supplier`` / ``items`` are there.
         request = self.context["request"]
         branch_id = request.user.branch_id
-        if attrs["supplier"].branch_id != branch_id:
+        supplier = attrs.get("supplier")
+        if supplier is not None and supplier.branch_id != branch_id:
             raise serializers.ValidationError(
                 {"supplier": ["Unknown supplier for this branch."]}
             )
-        for item in attrs["items"]:
+        for item in attrs.get("items", []):
             if item["variant"].product.branch_id != branch_id:
                 raise serializers.ValidationError(
                     {"items": ["A variant does not belong to this branch."]}
@@ -127,6 +132,10 @@ class RestockWriteSerializer(ControlCharSafeModelSerializer):
                 for item in items
             ]
         )
+        # The draft header carries the real purchase total from the outset —
+        # the exact Decimal sum of every line, not zero-until-confirmed.
+        restock.total_cost = restock_purchase_total(restock)
+        restock.save(update_fields=["total_cost", "updated_at"])
         return restock
 
 
