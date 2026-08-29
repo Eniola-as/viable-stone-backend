@@ -28,14 +28,27 @@ if it changes without a reviewed update. 100 paths, 141 operations. Treat a
 Cookie-session auth (no bearer tokens).
 
 1. `POST /api/v1/auth/login/` `{username, password}`.
-   * Employee → logged in immediately; response includes the safe profile.
-   * Owner / tech-admin → response is `{"mfa_required": true, ...}` and the
-     profile is withheld until MFA is cleared.
+   * Employee → logged in immediately; `200` body has `user` populated,
+     `mfa_required: false`, `mfa_verified: true`.
+   * Owner / tech-admin → `200` body is `{"mfa_required": true,
+     "mfa_verified": false, "user": null, ...}` — **the sign-in is not
+     complete.** Gate the app on `mfa_verified === true` (equivalently
+     `user !== null`), **never on the `200` alone.**
+   * Wrong credentials → `401` `invalid_credentials` (or `403`
+     `account_disabled`); a malformed body → `400`.
+   * A `POST /api/v1/auth/login/` attempt **always starts a fresh session** —
+     a *failed* attempt also clears any session the browser was already
+     carrying, so a rejected sign-in can never leave a previous user logged in.
+     Treat any non-2xx from login as "signed out".
 2. `POST /api/v1/auth/mfa/verify/` `{token}` (6-digit TOTP) — or
    `POST /api/v1/auth/mfa/recovery/` `{code}` with a one-time recovery code.
+   A wrong code → `400` (`mfa_invalid_token` / `recovery_code_invalid`) and the
+   session stays unverified — keep the user on the MFA screen; do **not**
+   proceed on a `400`.
 3. `POST /api/v1/auth/logout/`.
 4. `GET /api/v1/auth/me/` — the current safe profile (never returns password
-   hashes, TOTP secrets, recovery codes or full phone numbers).
+   hashes, TOTP secrets, recovery codes or full phone numbers). `401` = not
+   signed in, `403` = signed in but MFA not cleared (or wrong role).
 
 **Cookies:** `vs_sessionid` (HttpOnly) and `vs_csrftoken` (readable by JS).
 `SameSite=Lax`; `Secure` in production.
@@ -139,6 +152,7 @@ never calculate them client-side and never send them expecting them to be used:
 | `unit_price_snapshot`, `product_name_snapshot`, `sku_snapshot`, `variant_description_snapshot` | captured at sale time; immutable |
 | `unit_cost_snapshot`, `average_unit_cost`, `stock_value`, `cogs`, `gross_profit`, `net_profit` | owner-only; never in employee responses |
 | `receipt_number` | per-branch-per-day sequence, assigned on completion |
+| restock `line_total`, `total_cost` | server-calculated purchase total (`Σ quantity × unit_cost`, exact Decimal); already correct on a **DRAFT**, unchanged by confirmation |
 | `status`, `status_label` | server state machine |
 | approved discount `amount` | owner approval only (`0 < amount < subtotal`) |
 | refund amounts on a return | server, net of any discount |
@@ -196,6 +210,38 @@ private object store later); no filesystem path or storage key is ever exposed.
   removes the stored file. `204` on success; `403` for an employee; `404` when
   there is no image to clear. Product creation/replacement still uses the
   `multipart` `image` field above.
+
+## Approvals — polymorphic on `request_type`
+
+`ApprovalRequest` covers two workflows today: **owner-approved discounts** and
+**rare returns**. List and detail (`GET /api/v1/approvals/`,
+`GET /api/v1/approvals/{id}/`) always expose a stable, read-only
+**`request_type`** (`DISCOUNT` | `RETURN`) and **`status`**
+(`PENDING` | `APPROVED` | `REJECTED`) — **dispatch on `request_type`**. Owner
+only; MFA required; other branches' ids return `404`.
+
+### `POST /api/v1/approvals/{id}/approve/` — body and response depend on `request_type`
+
+| `request_type` | Request body | `200` response |
+|---|---|---|
+| `DISCOUNT` | `{ "amount": "<decimal string, 0 < amount < subtotal>", "reviewer_note"?: "<string>" }` | the updated **`ApprovalRequest`** (`status: "APPROVED"`, has `request_type`) |
+| `RETURN` | `{ "lines": [ { "sale_item": "<uuid>", "quantity": <int ≥ 1>, "condition": "RESELLABLE" \| "DAMAGED_OR_OPENED" } ], "refunds": [ { "method": "CASH" \| "TRANSFER" \| "POS", "amount": "<decimal string>", "reference"?: "<string>" } ], "reviewer_note"?: "<string>", "client_return_id"?: "<uuid>" }` — `lines` and `refunds` are each **required and non-empty**; refund amounts must sum to the server-computed return total (net of any discount) | the created **`SaleReturn`** (`items`, `refunds`, `total`, `client_return_id`; **no** `request_type`) |
+
+In `openapi.yml` the request is `ApproveRequestRequest` (`oneOf`
+`ApproveReturnRequest` / `ApproveDiscountRequest`) and the `200` is
+`ApproveResult` (`oneOf` `SaleReturnRead` / `ApprovalRequest`).
+
+Sending the wrong body is a **`400`** that names the missing field(s):
+`field_errors.amount` (discount body missing / return body sent to a discount),
+or `field_errors.lines` + `field_errors.refunds` (return body missing / discount
+body sent to a return). Business failures keep their `code`
+(e.g. `refund_mismatch`, `approval_not_pending`, `draft_changed`).
+
+### `POST /api/v1/approvals/{id}/reject/` — same for both types
+
+Body `{ "reviewer_note"?: "<string>" }`. `200` response is always the updated
+**`ApprovalRequest`** (`status: "REJECTED"`). A discount reject reverts the draft
+sale to `DRAFT`; a return reject changes nothing.
 
 ## Receipts / PDF
 

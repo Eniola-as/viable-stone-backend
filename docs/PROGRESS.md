@@ -641,3 +641,68 @@ report 112, 0 skipped:
   (`apps/catalog/tests/test_product_images.py` 28,
   `apps/catalog/tests/test_variant_search.py` 11). **Not committed, not pushed,
   not deployed.**
+
+- 2026-08-28: **Frontend-integration corrections G19 + G16** (strict TDD;
+  failing tests first). **G19 — draft restock total:** `POST /api/v1/restocks/`
+  computed each `RestockItem.line_total` but never set the parent
+  `Restock.total_cost`, so a retrieved DRAFT returned `total_cost: "0.00"`
+  while its lines summed to the real purchase amount. `total_cost` was only
+  written by `confirm_restock`. Blueprint says `total_cost` is
+  "calculated by server" with no status qualifier and `line_total` is
+  "server calculated" — so `total_cost` is the **purchase total in every
+  state**, not zero-until-confirmed. *Fix:* new single source of truth
+  `apps/inventory/services/restock.py::restock_purchase_total(restock)` — exact
+  Decimal `Σ quantity × unit_cost`, rounded to kobo. `RestockWriteSerializer
+  .create` now sets it right after `bulk_create`; `RestockViewSet
+  .perform_update` keeps it consistent on a metadata PATCH; `confirm_restock`
+  now takes its `total_cost` from the same helper. **Adjacent bug fixed:**
+  `RestockWriteSerializer.validate()` did unconditional `attrs["supplier"]` /
+  `attrs["items"]` and 500'd on any partial update of a draft — now uses
+  `.get()`. No model / schema / migration change (`total_cost` field already
+  existed). 12 new tests (`test_api.py::TestDraftRestockTotal` 6,
+  `test_restock.py::TestRestockPurchaseTotal` 6). **G16 — polymorphic approval
+  contract:** `POST /api/v1/approvals/{id}/approve/` dispatches at runtime on
+  `approval.request_type` (DISCOUNT → body `{amount, reviewer_note?}` → returns
+  `ApprovalRequest`; RETURN → body `{lines[], refunds[], reviewer_note?,
+  client_return_id?}` → returns `SaleReturn`), but `@extend_schema` hard-coded
+  `request=ApproveReturnSerializer` + `responses={200: SaleReturnRead}` — so
+  OpenAPI told clients to always send the return body for every type. **Runtime
+  is correct; only the published schema was wrong** → schema + docs only.
+  `approve`'s `@extend_schema` now uses `PolymorphicProxySerializer`: request
+  `ApproveRequestRequest` = `oneOf[ApproveReturnRequest, ApproveDiscountRequest]`
+  (new `ApproveDiscountRequest` component, `amount` required); `200`
+  `ApproveResult` = `oneOf[SaleReturnRead, ApprovalRequest]`; description
+  documents dispatch on the read-only `request_type` enum already on
+  list/detail. `reject` was already accurate (`{reviewer_note?}` → 
+  `ApprovalRequest` for both) — unchanged. Owner-only + MFA + branch-scoped
+  404 already enforced (`IsOwner` + branch-scoped queryset). Wrong-body errors
+  name the missing field (`amount`, or `lines`/`refunds`). 13 new tests
+  (`apps/sales/tests/test_approvals_contract.py`) — runtime shapes both ways,
+  authz/MFA/branch, and OpenAPI `oneOf` assertions. `openapi.yml` regenerated,
+  `--fail-on-warn` exit 0; path/operationId surface unchanged (contract
+  snapshot unaffected). `docs/FRONTEND_HANDOFF.md` gains an **Approvals**
+  section with the exact payload per type. **Not committed, not pushed, not
+  deployed.**
+
+- 2026-08-29: **Auth hardening — failed sign-in must not preserve a prior
+  session.** A manual tester reported "logged in with wrong credentials". The
+  credential checks are all correct (13 new tests in
+  `apps/accounts/tests/test_wrong_credentials.py`, django-axes on, prove it:
+  wrong password / unknown user → `401` no session; MFA owner with the right
+  password is `403` on `/me/` and every business endpoint until a **valid**
+  TOTP or recovery code clears MFA; wrong TOTP / wrong recovery / no device /
+  no codes → `400`, session stays unverified; the right code afterward still
+  works). Root cause of the report: `POST /api/v1/auth/login/` has
+  `authentication_classes = []`, so a *failed* attempt returned `401` while
+  leaving any **pre-existing** authenticated (and MFA-cleared) browser session
+  fully usable — the app kept working off the old `vs_sessionid`. *Fix
+  (`apps/accounts/api/auth_views.py`):* after body validation, if the request
+  carries an auth session (`_auth_user_id`), `request.session.flush()` before
+  authenticating — a sign-in attempt always starts fresh; a successful login
+  re-establishes it via `django_login`. A malformed (`400`) body is not a
+  credential attempt and keeps the session. No API/schema/model/migration
+  change. `docs/FRONTEND_HANDOFF.md` Auth section reworked: gate on
+  `mfa_verified === true` (not the `200`), treat any non-2xx from login as
+  signed-out, stay on the MFA screen on a `400`. Full suite **740 passed / 5
+  skipped**; ruff / `manage.py check` / migrations / `check --deploy` /
+  `spectacular --fail-on-warn` all clean. **Not committed, not pushed.**

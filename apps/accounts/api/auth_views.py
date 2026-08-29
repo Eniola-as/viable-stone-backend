@@ -118,6 +118,14 @@ class LoginView(APIView):
         username = serializer.validated_data["username"]
         password = serializer.validated_data["password"]
 
+        # A sign-in attempt always starts a brand-new session. Without this a
+        # *failed* attempt (wrong password, or a stalled MFA step) would leave
+        # any pre-existing authenticated session from the same browser fully
+        # usable, so a tester who typed the wrong credentials would still appear
+        # "logged in". A successful login re-establishes the session below.
+        if request.session.get("_auth_user_id"):
+            request.session.flush()
+
         credentials = {"username": username}
         if AxesProxyHandler.is_locked(request, credentials):
             return lockout_response(request, credentials)
