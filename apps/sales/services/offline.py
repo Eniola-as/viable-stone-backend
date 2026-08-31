@@ -56,6 +56,16 @@ from apps.sales.services.sales import CartLine, PaymentLine, create_sale
 
 _VALID_METHODS = {"CASH", "TRANSFER", "POS"}
 _REFERENCE_METHODS = {"TRANSFER", "POS"}
+
+# Outcomes that keep a sync record in the owner's review queue until it is
+# resolved. REJECTED is included: a rejected offline sale is a real sale the
+# device already took money for, so the owner must reconcile it (and can then
+# mark the record resolved).
+_REVIEW_QUEUE_OUTCOMES = (
+    OfflineSyncOutcome.CONFLICT,
+    OfflineSyncOutcome.OWNER_REVIEW_REQUIRED,
+    OfflineSyncOutcome.REJECTED,
+)
 # A small tolerance on the *start* of the window only — device and server
 # clocks are never perfectly aligned at session start. The 24h upper bound is
 # not relaxed. See the SECURITY note about device-clock limitations.
@@ -197,10 +207,7 @@ def issue_offline_authorization(
 def _flag_pending_for_review(authorization, *, actor, request, detail):
     updated = OfflineSaleSyncRecord.objects.filter(
         authorization=authorization,
-        outcome__in=[
-            OfflineSyncOutcome.CONFLICT,
-            OfflineSyncOutcome.OWNER_REVIEW_REQUIRED,
-        ],
+        outcome__in=_REVIEW_QUEUE_OUTCOMES,
         resolved=False,
     ).count()
     record_audit(
@@ -280,10 +287,7 @@ def replace_offline_authorization(
 def pending_review_count(authorization) -> int:
     return OfflineSaleSyncRecord.objects.filter(
         authorization=authorization,
-        outcome__in=[
-            OfflineSyncOutcome.CONFLICT,
-            OfflineSyncOutcome.OWNER_REVIEW_REQUIRED,
-        ],
+        outcome__in=_REVIEW_QUEUE_OUTCOMES,
         resolved=False,
     ).count()
 
@@ -385,6 +389,69 @@ def authorization_status(authorization) -> dict:
             authorization=authorization, outcome=OfflineSyncOutcome.ACCEPTED
         ).count(),
         "pending_review_count": pending_review_count(authorization),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Catalogue-snapshot retrieval (no writes)                                    #
+# --------------------------------------------------------------------------- #
+
+
+def catalogue_snapshot_for_cashier(*, authorization, user) -> dict:
+    """Project the frozen, signed fixed-price catalogue for the bound cashier.
+
+    Retrieval only. The snapshot returned is exactly what was signed when the
+    offline session opened — it is deliberately **not** rebuilt here, so a later
+    online price or stock change can never leak into a running offline session,
+    and repeated reads are identical.
+
+    Identity is bound exactly as ``POST /offline/sync/`` binds it: the stored
+    signed token is verified (constant-time via ``django.core.signing``) and its
+    branch / device / cashier must match the caller. Any mismatch — wrong
+    cashier, wrong device, wrong branch, or a device that is no longer the
+    active registered device — is surfaced as *not found* so it cannot reveal
+    whether another snapshot exists. A session the cashier legitimately owns
+    that is expired / revoked / replaced / force-closed returns the standard
+    safe error envelope instead.
+
+    The returned payload carries no cost, profit, stock value, credential,
+    signing key or customer data; only the signed token (already returned by
+    ``POST /offline/authorizations/``) is echoed back as the proof the sync
+    protocol requires.
+    """
+
+    # Same verification + binding as the sync path. Raises ``_NotFound`` on a
+    # branch / device / cashier / token mismatch and
+    # ``APIError(code="invalid_signature")`` if the stored token fails the HMAC
+    # check — neither is weakened here.
+    _bound, snapshot = load_authorization_for_token(
+        token=authorization.signed_token,
+        branch=authorization.branch,
+        user=user,
+    )
+
+    if authorization.device.status != DeviceStatus.ACTIVE:
+        raise _NotFound()
+
+    if authorization.status != OfflineAuthorizationStatus.ACTIVE:
+        raise Conflict(
+            "This offline session is no longer active.",
+            code="offline_session_not_active",
+        )
+    if authorization.is_expired:
+        raise Conflict(
+            "This offline authorization has expired.",
+            code="offline_authorization_expired",
+        )
+
+    return {
+        "authorization_id": str(authorization.id),
+        "status": authorization.status,
+        "snapshot_version": authorization.snapshot_version,
+        "issued_at": authorization.issued_at,
+        "expires_at": authorization.expires_at,
+        "signed_token": authorization.signed_token,
+        "items": snapshot["variants"],
     }
 
 
@@ -831,39 +898,25 @@ def _create_offline_sale(
 def resolve_sync_record(
     *, record, owner, note: str, request=None
 ) -> OfflineSaleSyncRecord:
+    """DEPRECATED note-only path — kept as a guard.
+
+    A ``CONFLICT`` / ``REJECTED`` / ``OWNER_REVIEW_REQUIRED`` record affects
+    stock, revenue, payments and COGS, none of which a note can put right, so it
+    can no longer be closed here — it must go through
+    :func:`apps.sales.services.offline_reconciliation.reconcile_sync_record`.
+    ``ACCEPTED`` / ``DUPLICATE`` records were never resolvable. Historical
+    already-``resolved`` rows are untouched.
+    """
+
     locked = OfflineSaleSyncRecord.objects.select_for_update().get(pk=record.pk)
-    if locked.outcome not in {
-        OfflineSyncOutcome.CONFLICT,
-        OfflineSyncOutcome.OWNER_REVIEW_REQUIRED,
-    }:
+    if locked.outcome in _REVIEW_QUEUE_OUTCOMES:
         raise Conflict(
-            "Only a conflict or review record can be resolved.",
-            code="offline_record_not_resolvable",
+            "This record affects stock or money and must be reconciled, not "
+            "noted. Use POST /api/v1/offline/sync-records/{id}/reconcile/.",
+            code="offline_reconciliation_required",
         )
-    note = (note or "").strip()
-    if len(note) < 5:
-        raise APIError(
-            "A resolution note is required.", code="resolution_note_required"
-        )
-    locked.resolved = True
-    locked.resolved_by = owner
-    locked.resolved_at = timezone.now()
-    locked.resolution_note = note[:500]
-    locked.save(
-        update_fields=[
-            "resolved",
-            "resolved_by",
-            "resolved_at",
-            "resolution_note",
-            "updated_at",
-        ]
+    raise Conflict(
+        "Only a CONFLICT, REJECTED or OWNER_REVIEW_REQUIRED record can be "
+        "resolved, and those must be reconciled.",
+        code="offline_record_not_resolvable",
     )
-    record_audit(
-        action="offline.sync_resolve",
-        target=locked,
-        actor=owner,
-        branch=locked.branch,
-        request=request,
-        after={"outcome": locked.outcome, "note": note[:120]},
-    )
-    return locked

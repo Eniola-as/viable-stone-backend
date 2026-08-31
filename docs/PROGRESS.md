@@ -706,3 +706,449 @@ report 112, 0 skipped:
   signed-out, stay on the MFA screen on a `400`. Full suite **740 passed / 5
   skipped**; ruff / `manage.py check` / migrations / `check --deploy` /
   `spectacular --fail-on-warn` all clean. **Not committed, not pushed.**
+
+- 2026-08-29: **Real server-side product filtering.** `GET /api/v1/products/`
+  silently ignored `?category=` / `?brand=` — the endpoint carried only
+  `SearchFilter` + `OrderingFilter`, and DRF filter backends drop query params
+  they do not own. New `apps/catalog/api/filters.py::ProductFilterBackend`
+  (added to `ProductViewSet.filter_backends` before search/ordering): a small
+  DRF Serializer validates `category` (uuid), `brand` (uuid), `kind`
+  (`PAINT` | `EQUIPMENT`, the real model field name) and `is_active` (bool);
+  invalid values raise `ValidationError` → the standard `validation_error`
+  envelope (every bad param in `field_errors`), never a 500 or a silent
+  ignore. Applied as exact `category_id` / `brand_id` / `kind` / `is_active`
+  filters, AND-combined, only on the `list` action, on top of the queryset the
+  view has already branch- and role-scoped — so branch isolation holds (a
+  foreign category/brand id → empty page) and an employee's `is_active=false`
+  just AND's with the forced `is_active=True` → empty page, never an inactive
+  product. Gate is on the raw query key, not `validated_data`: DRF
+  `BooleanField` reads a QueryDict as HTML input, so an *absent* `is_active`
+  resolves to `False` — reading it unconditionally would have filtered every
+  request to inactive-only. Composes with `search` / `ordering` / `page` /
+  `page_size`; response shape unchanged (`PaginatedProductReadList`), no
+  cost/owner-only fields added. `openapi.yml` regenerated — `products_list`
+  now documents `category` / `brand` / `kind` / `is_active` (drf-spectacular
+  picks up `get_schema_operation_parameters`); `--fail-on-warn` clean;
+  path/operationId surface unchanged (contract snapshot unaffected).
+  `docs/FRONTEND_HANDOFF.md` gains a **Product list** filter table. 23 tests
+  in `apps/catalog/tests/test_product_filters.py` (each filter alone, combined,
+  search+filter, ordering+pagination, empty result, invalid values, unknown
+  id, cross-branch isolation, employee visibility, no cost leak). **Not
+  committed, not pushed.**
+
+- 2026-08-30: **Frontend gap G2 — offline device can now READ the signed
+  catalogue snapshot** (strict TDD; failing tests first; additive; nothing
+  committed/pushed/deployed). *Root cause:* Stage 16 **builds, signs and
+  stores** the fixed catalogue snapshot (`OfflineDeviceAuthorization.snapshot`
+  JSON + the same rows inside `signed_token`) and **consumes** it server-side
+  in `/offline/sync/` and `/offline/temporary-receipt/`, but exposed **no read
+  contract** — `OfflineAuthorizationSerializer` deliberately returns only
+  `snapshot_version` (a number), not the rows. A disconnected till therefore
+  had no way to *build* an offline sale (fixed prices, quantity-at-open,
+  low-stock label). No second offline protocol was needed; only a projection
+  of the snapshot that already exists. *Fix — one narrowly-scoped additive
+  endpoint:* **`GET /api/v1/offline/authorizations/{id}/snapshot/`**
+  (`OfflineAuthorizationViewSet.snapshot` action + new
+  `offline.catalogue_snapshot_for_cashier` service). Chosen over widening the
+  create/status responses so the large fixed set never bloats list/status,
+  the response shape of existing endpoints is untouched, and retrieval binds
+  to the **single cashier** (not any branch user). Explicit serializers
+  `OfflineCatalogueSnapshotSerializer` / `OfflineCatalogueSnapshotItemSerializer`.
+  Response: `authorization_id`, `status` (always `ACTIVE` on 200),
+  `snapshot_version`, `issued_at`, `expires_at`, `signed_token` (the existing
+  Stage 16 proof, echoed for `authorization_token`), and `items[]` with the
+  **exact** keys `variant_id` / `name` / `sku` / `price` (Decimal string, 2 dp)
+  / `quantity` (whole units at session open) / `low_stock_level` — the same
+  field names the sync service already keys on, so no translation layer.
+  `Cache-Control: private, no-store`. Not paginated (bounded per-branch active
+  set). *Security:* reuses `load_authorization_for_token` — same constant-time
+  `django.core.signing` verification and branch/device/cashier/token binding as
+  `/offline/sync/`; wrong cashier / device / branch → an **indistinguishable
+  404**; a non-ACTIVE session → `409 offline_session_not_active`, expired →
+  `409 offline_authorization_expired` (standard error envelope); revoked device
+  → 404; the payload is served from the **verified signed token**, so it is
+  frozen for the session (repeated reads byte-identical, a later online price/
+  stock change never leaks in, and a mutated `snapshot` DB column is ignored).
+  No cost / average cost / stock value / profit / credential / signing key /
+  customer data in the body or logs; signature verification and constant-time
+  compare unchanged; one-active-device-per-branch and the online-checkout lock
+  untouched. *Contract:* `openapi.yml` regenerated, `--fail-on-warn` clean,
+  byte-stable (**101 paths / 142 operations**); `openapi_contract_snapshot.json`
+  (+1 path, +1 operationId), `security_classification.py`
+  (`offline-authorization-snapshot`) and `test_branch_isolation.py`
+  `indirectly_covered` updated in step. `docs/FRONTEND_HANDOFF.md` Offline
+  section reworked (new step 3 with the exact JSON + field-name callout; header
+  count 101/142). 24 new tests in
+  `apps/sales/tests/test_offline_snapshot_read.py` (authorised success, exact
+  Decimal price + whole-unit qty, snapshot stability under live price/stock
+  change, repeated retrieval, mutated-column ignored, no cost/secret leakage,
+  wrong cashier/device/branch = indistinguishable 404, unauthenticated 401,
+  expired/revoked/replaced/force-closed envelopes, tampered-token/body-edit
+  rejection, sync-service price parity, OpenAPI secret hygiene). No model
+  change, no migration. Local verify: full suite green (5 skipped = real-Redis
+  / pg-drill, CI-only); `ruff check` + `ruff format --check` clean;
+  `manage.py check` + `makemigrations --check` clean;
+  `check --deploy --fail-level WARNING` (production) clean (1 silenced: W021);
+  `spectacular --validate --fail-on-warn` exit 0, no diff. Live authenticated
+  browser test deliberately **not** run — **AWAITING USER MANUAL
+  VERIFICATION**. **Not committed, not pushed, not deployed.**
+
+- 2026-08-30: **Frontend contract-gap audit G1–G22** (strict TDD; failing tests
+  first; additive only; **nothing committed / pushed / deployed**). Verified
+  every G1–G22 claim against implementation / serializers / permissions /
+  filters / services / tests / generated OpenAPI. No path, method or
+  operationId changed; the frozen contract snapshot is unchanged except for the
+  G2 snapshot endpoint already recorded above. Runtime behaviour changed only
+  where a filter was previously **silently ignored** (now a `400
+  validation_error`).
+  * **G22 — `SaleRead.discount_request`** (new nullable read-only
+    `SaleDiscountRequestSummary`, drf-spectacular `ENUM_NAME_OVERRIDES` pins
+    `ApprovalStatusEnum` so `status` reuses the canonical enum). Populated from
+    the newest DISCOUNT `ApprovalRequest`; `requested_amount` /
+    `approved_amount` from `requested_changes`; `reviewed_by_username` /
+    `requested_by_username` only (no raw ids, no `fingerprint`, no `subtotal`,
+    no cost). `sales_visible_to` gains a `Prefetch(to_attr="_discount_requests",
+    ...select_related requested_by/reviewed_by)` so a sale list is not N+1.
+    Visible to exactly the users who can already GET the sale. Documented
+    lifecycle: **approve does NOT move `Sale.status`** (stays
+    `PENDING_APPROVAL`; `discount_total` becomes the approved amount);
+    **reject reverts to `DRAFT`, `discount_total` `"0.00"`**; a cart edit /
+    cancel supersedes a pending request into a `REJECTED` row with
+    `reviewed_by_username: null` + `reviewer_note` `"Superseded: …"` (the model
+    has no `CANCELLED`/`EXPIRED`). 22 tests
+    (`apps/sales/tests/test_sale_discount_request_read.py`).
+  * **G21 — `GET /approvals/` `?status` / `?request_type`** — new
+    `apps/sales/api/list_filters.py::ApprovalFilterBackend` (same validated
+    `BaseFilterBackend` + serializer pattern as `ProductFilterBackend`), wired
+    with `SearchFilter`/`OrderingFilter`; invalid value → `validation_error`;
+    branch + cashier scoping preserved. `test_approvals_filters.py` (13).
+  * **G3 — `GET /offline/sync-records/` `?outcome` / `?resolved`** — the
+    viewset already applied these ad-hoc; replaced with
+    `OfflineSyncRecordFilterBackend` (validated + documented; owner-only +
+    branch scoping unchanged). `test_offline_sync_records_filters.py` (10).
+  * **G18 / G13 — reports** — `ReportsViewSet.pagination_class = None`;
+    `best-sellers` / `slow-movers` now generate as **bare arrays** (they never
+    paginated); `?limit` 1..100 (default 10 / 20) is the only row cap.
+    operationIds unchanged (`…_list` kept). `test_openapi_contract.py`'s
+    paginated-wrapper check gains a documented two-entry exemption.
+    `apps/finance/tests/test_report_contract.py` (7).
+  * **G4 / G5 — inventory schemas** (runtime unchanged): `inventory/movements/`
+    now documents its **required `?variant=`** param + `page`/`page_size` and a
+    **paginated `StockMovement`** response (was `parameters=[]` + a single
+    `InventoryBalanceEmployee`); `inventory/low-stock/` is a paginated list;
+    `inventory/stock-value/` uses a new `StockValue` summary schema
+    (`{stock_value}`), owner-only. operationIds kept explicit.
+    `apps/inventory/tests/test_inventory_contract.py` (9).
+  * **G9 — `DraftCreateRequest.customer`** typed as `CustomerInlineRequest`
+    (was free-form `object`); omitted / `null` → walk-in unchanged.
+    `apps/sales/tests/test_draft_customer_contract.py` (4).
+  * **G1 — error envelope** — new `apps/core/openapi.py::add_error_envelope`
+    post-processing hook publishes an `Error` schema + `components.responses.
+    Error` and attaches it as the `default` response of every operation; the
+    stable `code` catalogue is documented in `FRONTEND_HANDOFF.md`. No
+    per-endpoint error invention. `tests/acceptance/test_error_contract.py` (5).
+  * **G2** — reported `ALREADY_IMPLEMENTED` this session; docs updated to
+    resolve the 404-vs-409 split (identity/existence mismatch = blind 404;
+    a dead-but-provably-yours session = 409 envelope) and to spell out the
+    server-side device/cashier/branch binding proof.
+  * **G6 / G7 / G8 / G10 / G11 / G12 / G14 / G15** — no new backend feature;
+    verified + documented (branch timezone read path, customer phone-masking
+    matrix, `client_finalize_id` idempotency, MFA-state-from-`LoginResponse`).
+  * **G16 / G17 / G19 / G20** — `ALREADY_IMPLEMENTED`; their suites re-run
+    green and OpenAPI still documents them.
+  Files: `apps/sales/api/{serializers,discount_serializers,list_filters,
+  return_views,offline_views}.py`, `apps/sales/selectors.py`,
+  `apps/finance/api/views.py`, `apps/inventory/api/{views,serializers}.py`,
+  `apps/core/openapi.py` (new), `config/settings/base.py`
+  (`ENUM_NAME_OVERRIDES` + `POSTPROCESSING_HOOKS`), `openapi.yml`,
+  `tests/acceptance/{test_openapi_contract.py,openapi_contract_snapshot.json}`,
+  `docs/FRONTEND_HANDOFF.md`. **No model change, no migration.** Local verify
+  results recorded in the audit report. Docker / Redis-CI / Trivy remain
+  external (not run locally). **Not committed, not pushed, not deployed.**
+
+- 2026-08-31: **Offline sync follow-ups G23 + review-queue completeness +
+  detail_code catalogue** (strict TDD; failing tests first; additive;
+  **nothing committed / pushed / deployed**).
+  * **G23 — `POST /offline/sync/` response shape.** The runtime has always
+    returned one object `{ "results": [...] }`, but `@extend_schema` declared
+    `OfflineSyncResultSerializer(many=True)` → drf-spectacular rendered a bare
+    `OfflineSyncResult[]`. Fixed the schema to match: new
+    `OfflineSyncResponseSerializer` (`results = OfflineSyncResultSerializer
+    (many=True)`), and the view now serialises through it. Runtime unchanged;
+    every existing test that reads `res.json()["results"]` still passes.
+    operationId `offline_sync_create` unchanged (contract snapshot unaffected).
+  * **Review queue includes unresolved `REJECTED`.** New module constant
+    `_REVIEW_QUEUE_OUTCOMES = (CONFLICT, OWNER_REVIEW_REQUIRED, REJECTED)` used
+    by `pending_review_count`, `_flag_pending_for_review` and
+    `resolve_sync_record`. Rationale: a `REJECTED` offline sale is a real
+    transaction the device already took money for — it must show in the
+    owner's queue, block a plain `end-session`, and be resolvable (owner
+    reconciles it, e.g. re-rings online, then marks the record resolved). No
+    schema/model change; `resolve_sync_record`'s guard + message widened.
+  * **`detail_code` catalogue.** `OfflineSyncResultSerializer.detail_code`
+    gains a `help_text` enumerating every value grouped by outcome
+    (`payment_mismatch`, `stock_not_available`, `outside_window`,
+    `duplicate_sequence`, `revoked`/`replaced`/`force_closed`, …); `outcome`
+    is now `ChoiceField(OfflineSyncOutcome.choices)` reusing the existing
+    `OutcomeEnum` (pinned via a new `ENUM_NAME_OVERRIDES` entry so
+    `--fail-on-warn` stays clean). `docs/FRONTEND_HANDOFF.md` §Offline steps 6
+    & 9 gain the result-shape spec, the `detail_code` table with suggested
+    wording, and the widened review-queue rule.
+  Files: `apps/sales/api/offline_serializers.py`,
+  `apps/sales/api/offline_views.py`, `apps/sales/services/offline.py`,
+  `config/settings/base.py`, `openapi.yml`, `docs/FRONTEND_HANDOFF.md`,
+  `docs/PROGRESS.md`. New: `apps/sales/tests/test_offline_sync_contract.py`
+  (14). **No model change, no migration.** Full battery re-run — results in
+  the session report. **Not committed, not pushed, not deployed.**
+
+- 2026-08-31: **G23 follow-up — `GET /offline/sales/{client_sale_id}/` carries
+  the sync-record resolution state** (strict TDD; failing tests first;
+  **nothing committed / pushed / deployed**). *Root cause:* the endpoint's
+  200 body was `type: object, additionalProperties: {}` (free-form) and only
+  reported the official-Sale mapping (`synced`, `outcome`,
+  `official_receipt_number`). A cashier device polling it could detect "became
+  a Sale" but not "owner resolved the sync-record **without** a Sale" — the
+  normal `REJECTED` path, and possible for `CONFLICT` — so those "needs the
+  owner" rows stuck on the device forever. *Fix (record-centric; explicit
+  schema):* new `OfflineSaleLookupSerializer` (`apps/sales/api/
+  offline_serializers.py`) → `OfflineSaleLookup` component:
+  `client_sale_id, device_sequence, outcome (OutcomeEnum), detail_code
+  (+ the shared catalogue help_text), sale_id|null, receipt_number|null,
+  resolved, resolved_at|null, resolution_note`. `OfflineSaleLookupView` now
+  loads the `OfflineSaleSyncRecord` (branch-scoped) and **binds to
+  `record.authorization.cashier_id == request.user.id`** — any other user
+  (including the branch owner), a `client_sale_id` with no record, or a cross-
+  branch id → an indistinguishable `404 not_found`. Returned for a record in
+  any outcome, not only once an official Sale exists, so a resolved
+  CONFLICT/REJECTED shows `resolved: true` + `resolved_at` + `resolution_note`
+  while `outcome`/`sale_id` are unchanged — the device clears the row. Removed
+  the now-unused `Sale` import from the view. **Breaking to the (undocumented,
+  free-form) old body:** `synced` dropped; `official_receipt_number` →
+  `receipt_number`. operationId `offline_sales_retrieve` and the path/method
+  are unchanged → contract snapshot unaffected. `docs/FRONTEND_HANDOFF.md`
+  §Offline step 7 rewritten with the exact shape + binding; step 8 gains the
+  explicit **end-session is owner-only** note (a cashier gets `403
+  permission_denied` — existing Stage 16 design, unchanged). Tests updated:
+  `test_offline_api.py::test_client_sale_id_maps_to_official_sale_after_sync`,
+  `tests/acceptance/test_branch_isolation.py` (`offline-sale-lookup` row now
+  points at a real sync record). New: `apps/sales/tests/
+  test_offline_sale_lookup.py` (11) — accepted shape, held CONFLICT visible,
+  CONFLICT/REJECTED resolved-without-a-Sale no longer stuck, wrong cashier /
+  owner / cross-branch / unknown id = 404 (indistinguishable), 401
+  unauthenticated, no cost/token/customer leak, OpenAPI schema. `openapi.yml`
+  regenerated (`--fail-on-warn` clean, byte-stable). **No model change, no
+  migration.** Full battery re-run — results in the session report. **Not
+  committed, not pushed, not deployed.**
+
+- 2026-08-31: **Safe offline-sale reconciliation** (approved accounting +
+  inventory design; strict TDD; **nothing committed / pushed / deployed**).
+  Replaces the unsafe path where an owner could mark a `CONFLICT` / `REJECTED`
+  / `OWNER_REVIEW_REQUIRED` sync record `resolved` with only a note while
+  stock, revenue, payments, COGS and profit stayed wrong.
+  * **Model** (`apps/sales/migrations/0004`, `apps/inventory/migrations/0002`):
+    new `OfflineSaleReconciliation` (1:1 with `OfflineSaleSyncRecord`,
+    immutable; `kind` = `RECORDED_AS_SALE` | `REFUNDED_AND_RETURNED` |
+    `LINKED_EXISTING_SALE`; `resolved_by` / `resolved_at` / `explanation` /
+    `sale` / `receipt_number` / `refund_total` / `linked_manually` /
+    `completion_time_substituted`), child `OfflineReconciliationRefund`
+    (evidence, must total the offline amount) and `OfflineReconciliationCount`
+    (physical count per affected variant + `correction_delta`). New
+    `MovementType.OFFLINE_RECONCILIATION` (`StockMovement.movement_type`
+    widened 12 -> 24).
+  * **Service** `apps/sales/services/offline_reconciliation.py::
+    reconcile_sync_record` — one `transaction.atomic()`, `select_for_update`
+    on the sync record. `RECORDED_AS_SALE`: verifies the retained signed token
+    + branch/device/cashier binding (`offline_data_untrusted` otherwise),
+    recomputes the total from the frozen snapshot, validates the retained
+    payments cover it (owner supplies only the missing Transfer/POS
+    references), rebuilds each affected balance to `counted_on_hand +
+    qty_in_sale` via an `OFFLINE_RECONCILIATION` correction (never restock,
+    cost basis untouched), then calls the authoritative `create_sale`
+    (`source=OFFLINE`, `fixed_prices`, original `client_sale_id`, in-window
+    `completed_at`, COGS from the locked `average_unit_cost`) and asserts the
+    final balance equals the count and is non-negative. `REFUNDED_AND_RETURNED`:
+    full return + full refund only; refund evidence must total the offline
+    amount; creates **no** Sale / Payment / SaleReturn / stock movement.
+    `LINKED_EXISTING_SALE`: fallback — validates a COMPLETED branch sale, not
+    already linked, matching total. Idempotent per record (1:1 + row lock +
+    `create_sale` key); refund vs sale reconciliations are mutually exclusive
+    (`offline_record_already_resolved`).
+  * **`resolve_sync_record`** now `409 offline_reconciliation_required` for the
+    three accounting outcomes (and its existing `offline_record_not_resolvable`
+    otherwise); the `resolve/` endpoint stays as a guard. Historical
+    `resolved=True` rows untouched.
+  * **API**: `POST /api/v1/offline/sync-records/{id}/reconcile/` (owner + MFA)
+    -> `OfflineReconciliationResult`. `OfflineSaleLookup` gains a safe
+    `resolution_kind` (nullable enum, no amounts) for the cashier device.
+  * **Contract**: `openapi.yml` regenerated (`--fail-on-warn` clean,
+    byte-stable; +1 path / +1 operationId / `OfflineReconciliation*` schemas +
+    `MovementType.OFFLINE_RECONCILIATION`); `openapi_contract_snapshot.json`,
+    `security_classification.py` (`offline-sync-record-reconcile`) and
+    `test_branch_isolation.py` updated; `ENUM_NAME_OVERRIDES` pins `KindEnum`
+    (catalogue) + `OfflineReconciliationKindEnum`. `docs/FRONTEND_HANDOFF.md`
+    gains an **Offline sale reconciliation** section.
+  * **Tests**: `apps/sales/tests/test_offline_reconciliation.py` (34) +
+    `test_offline_reconciliation_concurrency.py` (3 real-thread PostgreSQL);
+    existing `test_offline_api.py` / `test_offline_sale_lookup.py` /
+    `test_offline_sync_contract.py` updated for the note-only removal.
+  * **Conflicts reported** (brief vs model): payment references / customer
+    phone are not retained (owner supplies references; customer is name-only);
+    `MovementType` needed a new value + column widen; `outside_window`
+    timestamps are not preserved (now-substituted, flagged); note-only
+    resolution removed for the three outcomes; a cashier hitting the owner-only
+    endpoint gets `403` (established pattern) while cross-branch/bad-id gets
+    `404`. No inventory invariant weakened. **No** commit / push / deploy.
+
+- 2026-08-31: **Offline reconciliation — provisional-approval corrections**
+  (verification pass on the design above; automated backend tests only;
+  **nothing committed / pushed / deployed**; the frontend has NOT been asked to
+  sync the contract).
+  * **Model** (`apps/sales/migrations/0004` rebuilt in place — still unapplied
+    to any real DB): `OfflineSaleReconciliation` gains `amount_source`
+    (`SNAPSHOT_VERIFIED` | `OWNER_ATTESTED`, blank for `RECORDED_AS_SALE`) and
+    `link_verification` (`FULL` | `PARTIAL` | `MANUAL_ATTESTED`, blank off
+    `LINKED_EXISTING_SALE`). New `TextChoices` `OfflineAmountSource` /
+    `OfflineLinkVerification`.
+  * **P1 — `LINKED_EXISTING_SALE` safety.** The target is now compared
+    field-by-field against every trustworthy retained value — item lines +
+    quantities (`redacted_payload`), payment methods + amounts
+    (`retained_payments`), and the cryptographically **verified** snapshot
+    total (falling back to the retained payment sum). Any comparable field that
+    mismatches -> `409 sale_incompatible`, so an unrelated same-branch sale can
+    no longer be attached just because the branch + total line up. When
+    **nothing** is comparable (retained data too damaged) the link needs
+    `owner_attestation: true` (owner + MFA is already enforced by the view) + a
+    ≥40-char `explanation`; it is stamped `link_verification: MANUAL_ATTESTED`,
+    `amount_source: OWNER_ATTESTED`, `linked_manually: true`. `FULL` requires
+    all three checks present and matched; else `PARTIAL`. Cross-branch / unknown
+    `sale_id` still 404.
+  * **P2 — `REFUNDED_AND_RETURNED` untrusted amount.** The "full offline
+    amount" is recomputed from the verified frozen snapshot
+    (`amount_source: SNAPSHOT_VERIFIED`) — including for a `payment_mismatch`
+    REJECTED record (snapshot prices are authoritative, not the device's
+    recorded paid figure). If the snapshot cannot be verified (broken
+    signature / binding, malformed retained items) the backend refuses to
+    compare against an untrusted number: `409 offline_total_unverifiable`
+    unless the request carries `owner_attestation: true` +
+    `attested_offline_total` + a ≥40-char `explanation`, in which case the
+    result is flagged `amount_source: OWNER_ATTESTED` (never presented as
+    verified). New codes `offline_total_unverifiable`, `attested_total_required`,
+    `attestation_explanation_too_short`.
+  * **P3 — payment-reference association.** `payment_references` is now
+    **structured** — `[{ payment_index, reference }]` with 0-based
+    `payment_index` into the record's `retained_payments` — so a split
+    Transfer + POS batch is never mis-mapped by order. New owner-only read
+    model `retained_payments` on `GET .../sync-records/{id}/`
+    (`[{payment_index, method, amount, reference_required}]`, never a
+    reference). New codes `payment_reference_index_invalid`,
+    `payment_reference_duplicated`, `payment_reference_unexpected`.
+  * **P4 — historical unsafe resolutions.** New management command
+    `list_unsafe_offline_resolutions` (+ `unsafe_offline_resolutions()` helper):
+    lists accounting-outcome records with `resolved=True` and **no**
+    `OfflineSaleReconciliation`; prints only ids / branch code / outcome /
+    detail code / timestamps / resolver / whether an official Sale exists —
+    no customer or payment data. `--reopen` clears `resolved` (audited via
+    `offline.reopen_unsafe_resolution`) so the record re-enters the queue;
+    it invents no Sale, refund or stock movement. **Current local dev DB: 5
+    such records**, all LEKKI-branch demo/test residue from
+    `seed_demo` + earlier note-only test runs — to be `--reopen`ed and
+    reconciled (or explained as demo data) before any deploy.
+  * **P5 — refund-reference disclosure.** Resolved: owner-entered
+    `reconciliation.refunds[].reference` **is** returned on the owner + MFA
+    reconcile response (so the owner can confirm what was recorded); it is
+    excluded from every `AuditLog` row (`record_audit` `after` carries
+    `refund_total` only) and the cashier `OfflineSaleLookup` has no `refunds`
+    field at all. The device's *original* offline payment reference was never
+    stored. Serializer docstrings + the `reconcile` `@extend_schema`
+    description + `docs/FRONTEND_HANDOFF.md` updated to say so.
+  * **P6 — repo hygiene.** `.gitignore` already ignores `private-media/`
+    (verified: `git check-ignore` matches, `git status` clean of it); the
+    user's uploaded files under it are untouched.
+  * **Contract**: `openapi.yml` regenerated (`--fail-on-warn` clean,
+    byte-stable — identical on a second run). **No new path / operationId**
+    (`openapi_contract_snapshot.json` unchanged, contract test green); added
+    component schemas `_RetainedPayment`, `_ReconcilePaymentReferenceRequest`,
+    `AmountSourceEnum`, `LinkVerificationEnum`, plus the new fields on
+    `OfflineReconciliation` / `OfflineSyncRecord` / `OfflineReconcileRequest`.
+    No `ENUM_NAME_OVERRIDES` change needed (no collision).
+  * **Tests**: `test_offline_reconciliation.py` 34 -> 52 (+P1 link-safety ×8,
+    +P2 total-source ×4, +P3 structured references ×3, +P4 command ×1,
+    +P5 disclosure ×1, +contract ×1; `test_transfer_payment_...` migrated to
+    the structured request). Full battery: **914 passed / 5 skipped** on
+    PostgreSQL 18, 94% coverage; ruff / format / `manage.py check` /
+    `makemigrations --check` / `check --deploy --fail-level WARNING` (prod) /
+    OpenAPI `--fail-on-warn` + byte-stable / secret + action-pin scans /
+    pip-audit all clean. **No** commit / push / deploy.
+
+- 2026-08-31: **Offline reconciliation — refund amount = money ACTUALLY
+  COLLECTED** (second correction pass; automated backend tests only; **nothing
+  committed / pushed / deployed / synced to the frontend**).
+  * **Bug**: `REFUNDED_AND_RETURNED` required the refund evidence to total the
+    *verified catalogue snapshot* total. For a `payment_mismatch` record
+    (snapshot ₦2,000, device took ₦1,999) that forced either an over-refund or
+    false refund evidence.
+  * **Model** (`apps/sales/migrations/0004` rebuilt in place again — still
+    unapplied to any real DB): `OfflineAmountSource` gains
+    `RETAINED_PAYMENTS_MATCHED_TO_SNAPSHOT` (column widened 20 -> 40);
+    `OfflineSaleReconciliation` gains owner-only diagnostics
+    `verified_snapshot_total` and `retained_payments_total` (nullable
+    Decimals). `SNAPSHOT_VERIFIED` / `OWNER_ATTESTED` / the
+    `OfflineLinkVerification` help-text reworded to their exact meanings.
+  * **Service** (`_resolve_offline_total` -> `_resolve_collected_amount`, new
+    `_retained_payments_total`): the refund figure is the money **actually
+    collected**. Trusted automatically **only** when the retained device
+    payments parse cleanly **and equal** the verified snapshot total
+    (`amount_source: RETAINED_PAYMENTS_MATCHED_TO_SNAPSHOT`). On any
+    disagreement, or unverifiable retained data, the catalogue total is **not**
+    used and the device figure is **not** trusted: `409
+    offline_total_unverifiable` unless `owner_attestation: true` +
+    `attested_offline_total` (amount collected) + ≥40-char `explanation`
+    (`OWNER_ATTESTED`); `refunds` must then total the attested amount exactly.
+    A non-positive collected amount -> `409 no_payment_to_refund` (not a
+    refund; no fake positive evidence accepted). The verified snapshot total
+    and retained payment total are recorded as the two owner-only diagnostic
+    fields — never in the cashier `OfflineSaleLookup`, never in an
+    `AuditLog` row (audit `after` now also carries the categorical
+    `amount_source` / `link_verification`, no amounts). Rule kept: no Sale /
+    revenue / COGS / receipt / stock movement for a full return + full refund.
+  * **Dimensions fix**: `LINKED_EXISTING_SALE` `FULL` is now defined once,
+    everywhere, as **three dimensions** — (1) line items & quantities,
+    (2) payment methods & amounts, (3) transaction total — all comparable and
+    all matched (`checks_possible == 3 and checks_passed == 3`); `PARTIAL` =
+    every comparable one matched, fewer than three comparable; `MANUAL_ATTESTED`
+    = none comparable. Service comment, model help-text, `@extend_schema`,
+    serializer docstring and `FRONTEND_HANDOFF.md` all use this wording.
+  * **Contract**: `openapi.yml` regenerated (`--fail-on-warn` clean,
+    byte-stable). **No new path / operationId** (contract snapshot unchanged);
+    `AmountSourceEnum` gains a value, `OfflineReconciliation` gains
+    `verified_snapshot_total` / `retained_payments_total`. New stable code
+    `no_payment_to_refund`.
+  * **Tests**: `test_offline_reconciliation.py` 52 -> 56 — `TestRefundTotalSource`
+    replaced by `TestRefundCollectedAmount` covering: retained==snapshot
+    succeeds (`RETAINED_PAYMENTS_MATCHED_TO_SNAPSHOT`); retained ₦1,999 vs
+    ₦2,000 refund-of-catalogue without attestation rejected; owner attests
+    ₦1,999 + refunds ₦1,999 succeeds (`OWNER_ATTESTED`, diagnostics
+    ₦2,000/₦1,999); attested ≠ refund evidence rejected; broken-signature and
+    malformed-items each need attestation; zero collected can't be faked as a
+    refund; diagnostics + refund references stay owner-only (cashier + audit
+    checked).
+  * **Historical demo records**: the **5** unsafe LEKKI-branch note-only
+    resolutions remain **listed only** — `list_unsafe_offline_resolutions`
+    still reports them; they were **not** mutated. Before any deployment they
+    MUST be either `--reopen`ed and reconciled through the endpoint, or the
+    demo database safely reseeded (`seed_demo` is idempotent and refuses under
+    production settings). They must not be treated as reconciled.
+  * **Known limitation (accepted)** — *corrupted zero-payment record*: a
+    `REJECTED` / `CONFLICT` / `OWNER_REVIEW_REQUIRED` record whose established
+    "amount actually collected" is not positive (retained payments empty /
+    unparseable and the owner cannot truthfully attest a positive figure)
+    **cannot currently be reconciled**. `RECORDED_AS_SALE` has nothing to
+    charge, `REFUNDED_AND_RETURNED` returns `409 no_payment_to_refund` (by
+    design — no fake positive refund evidence is accepted), and
+    `LINKED_EXISTING_SALE` needs a real matching sale. Such a record therefore
+    **remains unresolved in the review queue** and keeps blocking a plain
+    `end-session`. Resolving it needs a future explicit no-transaction /
+    void resolution type, or controlled administrative handling (DBA-level
+    review) — deliberately out of scope here.
+  * Full battery re-run — see session report. **No** commit / push / deploy /
+    frontend sync.

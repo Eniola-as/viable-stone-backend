@@ -4,11 +4,12 @@ import posixpath
 from django.http import FileResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
+from apps.catalog.api.filters import ProductFilterBackend
 from apps.catalog.api.serializers import (
     BrandSerializer,
     CategorySerializer,
@@ -96,7 +97,16 @@ class BrandViewSet(_CatalogueViewSet):
 
 
 @extend_schema_view(
-    list=extend_schema(summary="Search products", tags=["Catalogue"]),
+    list=extend_schema(
+        summary="Search and filter products",
+        description=(
+            "Filter with `category` / `brand` (exact id), `kind` "
+            "(`PAINT` | `EQUIPMENT`) and `is_active` (`true` | `false`); "
+            "combine freely with `search`, `ordering`, `page` and `page_size`. "
+            "Filters are AND-combined and always scoped to the caller's branch."
+        ),
+        tags=["Catalogue"],
+    ),
     retrieve=extend_schema(summary="Retrieve a product", tags=["Catalogue"]),
     create=extend_schema(
         summary="Create a product with an optional image (owner)", tags=["Catalogue"]
@@ -106,6 +116,11 @@ class ProductViewSet(_CatalogueViewSet):
     queryset = Product.objects.select_related("brand", "category").prefetch_related(
         "variants"
     )
+    filter_backends = [
+        ProductFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     search_fields = ["name", "variants__sku", "variants__barcode", "brand__name"]
     ordering_fields = ["name", "created_at"]
     audit_action_prefix = "product"

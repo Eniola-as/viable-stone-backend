@@ -13,6 +13,11 @@ class MovementType(models.TextChoices):
     RETURN = "RETURN", "Return"
     DAMAGE = "DAMAGE", "Damage / write-off"
     ADJUSTMENT = "ADJUSTMENT", "Correction"
+    # Owner + MFA count correction applied while reconciling an offline sale
+    # whose sync failed. NOT a purchase / restock / hidden stock creation —
+    # it only rebuilds the pre-sale balance from a physical count so the
+    # official sale's stock deduction lands on the counted quantity.
+    OFFLINE_RECONCILIATION = "OFFLINE_RECONCILIATION", "Offline reconciliation"
 
 
 class RestockStatus(models.TextChoices):
@@ -154,7 +159,7 @@ class StockMovement(UUIDModel):
         on_delete=models.PROTECT,
         related_name="stock_movements",
     )
-    movement_type = models.CharField(max_length=12, choices=MovementType.choices)
+    movement_type = models.CharField(max_length=24, choices=MovementType.choices)
     quantity_delta = models.IntegerField()
     unit_cost_snapshot = models.DecimalField(
         max_digits=14, decimal_places=2, null=True, blank=True

@@ -1,4 +1,4 @@
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
@@ -19,6 +19,7 @@ from apps.inventory.api.serializers import (
     StockCountReadSerializer,
     StockCountWriteSerializer,
     StockMovementSerializer,
+    StockValueSerializer,
     SupplierSerializer,
 )
 from apps.inventory.models import (
@@ -139,7 +140,17 @@ class InventoryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             return InventoryBalance.objects.none()
         return balances_for_branch(user.branch_id)
 
-    @extend_schema(summary="Low-stock balances", tags=["Inventory"])
+    @extend_schema(
+        operation_id="inventory_low_stock_retrieve",
+        responses={200: InventoryBalanceEmployeeSerializer(many=True)},
+        summary="Low-stock balances (paginated)",
+        description=(
+            "Branch balances at or below each variant's low-stock level. "
+            "Paginated. Cashiers get quantity + price; an owner also gets cost "
+            "fields at runtime (the schema documents the guaranteed subset)."
+        ),
+        tags=["Inventory"],
+    )
     @action(detail=False, url_path="low-stock")
     def low_stock(self, request):
         queryset = low_stock_for_branch(request.user.branch_id)
@@ -149,11 +160,16 @@ class InventoryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
-    @extend_schema(summary="Total stock value at cost (owner)", tags=["Inventory"])
+    @extend_schema(
+        operation_id="inventory_stock_value_retrieve",
+        responses={200: StockValueSerializer},
+        summary="Total stock value at cost (owner)",
+        tags=["Inventory"],
+    )
     @action(detail=False, url_path="stock-value", permission_classes=[IsOwner])
     def stock_value(self, request):
         total = to_money(stock_value_for_branch(request.user.branch_id))
-        return Response({"stock_value": str(total)})
+        return Response(StockValueSerializer({"stock_value": str(total)}).data)
 
     @extend_schema(
         request=OpeningStockSerializer,
@@ -207,9 +223,27 @@ class InventoryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         return Response(InventoryBalanceOwnerSerializer(balance).data, status=201)
 
     @extend_schema(
-        summary="Stock-movement ledger for one variant (owner)",
+        operation_id="inventory_movements_retrieve",
+        parameters=[
+            OpenApiParameter(
+                "variant",
+                str,
+                OpenApiParameter.QUERY,
+                required=True,
+                description="Variant id whose stock-movement ledger to return.",
+            ),
+            OpenApiParameter("page", int, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("page_size", int, OpenApiParameter.QUERY, required=False),
+        ],
+        responses={200: StockMovementSerializer(many=True)},
+        summary="Stock-movement ledger for one variant (owner, paginated)",
+        description=(
+            "Append-only stock-movement ledger for one variant, newest first, "
+            "paginated. Owner only; `?variant=<id>` is required. Each row: "
+            "movement type, quantity delta, cost snapshot, actor, reference "
+            "type/id and timestamp."
+        ),
         tags=["Inventory"],
-        parameters=[],
     )
     @action(detail=False, permission_classes=[IsOwner])
     def movements(self, request):

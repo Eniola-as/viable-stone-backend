@@ -307,7 +307,27 @@ SPECTACULAR_SETTINGS = {
     "SCHEMA_PATH_PREFIX": "/api/v1",
     "COMPONENT_SPLIT_REQUEST": True,
     "SORT_OPERATIONS": True,
-    "ENUM_NAME_OVERRIDES": {},
+    # ``ApprovalRequest.status`` and the G22 ``SaleDiscountRequestSummary.status``
+    # share one choice set — pin it so both reuse ``ApprovalStatusEnum`` instead
+    # of drf-spectacular inventing a collision name.
+    "ENUM_NAME_OVERRIDES": {
+        "ApprovalStatusEnum": "apps.sales.models.ApprovalStatus",
+        # OfflineSaleSyncRecord.outcome and the G23 OfflineSyncResult.outcome
+        # share one choice set — pin it to the existing OutcomeEnum.
+        "OutcomeEnum": "apps.sales.models.OfflineSyncOutcome",
+        # Two different choice sets both surface through a field named ``kind``:
+        # keep the existing catalogue one as ``KindEnum`` and give the new
+        # reconciliation one (also used as ``resolution_kind``) its own name.
+        "KindEnum": "apps.catalog.models.ProductKind",
+        "OfflineReconciliationKindEnum": (
+            "apps.sales.models.OfflineReconciliationKind"
+        ),
+    },
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        # G1 — publish the standard error envelope + attach it as `default`.
+        "apps.core.openapi.add_error_envelope",
+    ],
     "SERVERS": [{"url": "/", "description": "Current host"}],
 }
 

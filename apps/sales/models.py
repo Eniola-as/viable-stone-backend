@@ -461,3 +461,216 @@ class OfflineSaleSyncRecord(BaseModel):
 
     def __str__(self):
         return f"OfflineSync {self.client_sale_id} ({self.outcome})"
+
+
+# --------------------------------------------------------------------------- #
+# Offline sale reconciliation — safe owner resolution of accounting-impacting #
+# CONFLICT / REJECTED / OWNER_REVIEW_REQUIRED sync records                     #
+# --------------------------------------------------------------------------- #
+
+
+class OfflineReconciliationKind(models.TextChoices):
+    RECORDED_AS_SALE = "RECORDED_AS_SALE", "Recorded as an official sale"
+    REFUNDED_AND_RETURNED = (
+        "REFUNDED_AND_RETURNED",
+        "Refunded — all goods returned, no sale",
+    )
+    LINKED_EXISTING_SALE = (
+        "LINKED_EXISTING_SALE",
+        "Linked to an owner-entered official sale",
+    )
+
+
+class OfflineAmountSource(models.TextChoices):
+    """How the money amount recorded on a reconciliation was established.
+
+    * ``SNAPSHOT_VERIFIED`` — RECORDED_AS_SALE / LINKED_EXISTING_SALE only: an
+      amount recomputed as the sum of price times quantity from the
+      cryptographically verified frozen catalogue snapshot. It is the
+      authoritative *sale* total, not a statement about how much cash actually
+      changed hands.
+    * ``RETAINED_PAYMENTS_MATCHED_TO_SNAPSHOT`` — REFUNDED_AND_RETURNED only:
+      the retained device payment total parsed cleanly **and equals** the
+      verified snapshot total, so the amount actually collected from the
+      customer is known with confidence and is that agreed figure.
+    * ``OWNER_ATTESTED`` — the amount could not be established from trusted
+      retained data (broken signature / binding, malformed items, or retained
+      payments that disagree with the verified snapshot). The owner attested the
+      amount **actually collected** from physical evidence; it is never
+      presented as cryptographically verified.
+    """
+
+    SNAPSHOT_VERIFIED = (
+        "SNAPSHOT_VERIFIED",
+        "Sale total recomputed from the cryptographically verified frozen snapshot",
+    )
+    RETAINED_PAYMENTS_MATCHED_TO_SNAPSHOT = (
+        "RETAINED_PAYMENTS_MATCHED_TO_SNAPSHOT",
+        "Retained device payments parsed cleanly and equal the verified snapshot total",
+    )
+    OWNER_ATTESTED = (
+        "OWNER_ATTESTED",
+        "Owner-attested amount collected (retained data could not establish it)",
+    )
+
+
+class OfflineLinkVerification(models.TextChoices):
+    """How thoroughly a LINKED_EXISTING_SALE target was matched against the
+    retained offline record, across three dimensions:
+
+    1. line items and their quantities,
+    2. payment methods and amounts,
+    3. the transaction total.
+    """
+
+    FULL = "FULL", "All three dimensions were comparable and every one matched"
+    PARTIAL = (
+        "PARTIAL",
+        "Every comparable dimension matched; fewer than three could be compared",
+    )
+    MANUAL_ATTESTED = (
+        "MANUAL_ATTESTED",
+        "No dimension was comparable — owner-attested manual match",
+    )
+
+
+class OfflineSaleReconciliation(BaseModel):
+    """One immutable owner reconciliation of an accounting-impacting offline
+    sync record. Creating this row is what marks the sync record ``resolved``;
+    it is never edited afterward.
+    """
+
+    sync_record = models.OneToOneField(
+        OfflineSaleSyncRecord,
+        on_delete=models.PROTECT,
+        related_name="reconciliation",
+    )
+    branch = models.ForeignKey(
+        "accounts.Branch",
+        on_delete=models.PROTECT,
+        related_name="offline_reconciliations",
+    )
+    kind = models.CharField(max_length=24, choices=OfflineReconciliationKind.choices)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="offline_reconciliations",
+    )
+    resolved_at = models.DateTimeField()
+    explanation = models.TextField()
+    # RECORDED_AS_SALE / LINKED_EXISTING_SALE -> the official Sale.
+    sale = models.OneToOneField(
+        Sale,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="offline_reconciliation",
+    )
+    receipt_number = models.CharField(max_length=40, blank=True)
+    # True only for LINKED_EXISTING_SALE (owner re-entered from trusted evidence
+    # because the retained offline data could not be verified).
+    linked_manually = models.BooleanField(default=False)
+    # REFUNDED_AND_RETURNED: the amount actually collected from the customer, and
+    # therefore the exact amount the refund evidence must total. NOT necessarily
+    # the catalogue total — see ``amount_source``.
+    refund_total = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True
+    )
+    # How the money amount on this row was established (see OfflineAmountSource).
+    amount_source = models.CharField(
+        max_length=40, choices=OfflineAmountSource.choices, blank=True
+    )
+    # LINKED_EXISTING_SALE only: how thoroughly the linked sale was matched
+    # against the retained offline record.
+    link_verification = models.CharField(
+        max_length=16, choices=OfflineLinkVerification.choices, blank=True
+    )
+    # Owner-only diagnostics for a REFUNDED_AND_RETURNED where the collected
+    # amount was not simply the agreed figure: the verified catalogue total and
+    # the retained device payment total, kept side by side so an owner can see
+    # why an attestation was required. Never surfaced to cashiers or written to
+    # audit-log rows.
+    verified_snapshot_total = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True
+    )
+    retained_payments_total = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True
+    )
+    # True when the reconciliation had to substitute ``timezone.now()`` because
+    # the retained ``offline_created_at`` was outside the authorised window.
+    completion_time_substituted = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-resolved_at"]
+
+    def __str__(self):
+        return f"OfflineReconciliation {self.kind} ({self.sync_record_id})"
+
+
+class OfflineReconciliationRefund(UUIDModel):
+    """Refund evidence for a REFUNDED_AND_RETURNED reconciliation.
+
+    No ``Payment``, ``Refund`` or ``SaleReturn`` row is ever created for a
+    fully-reversed offline sale that never entered the ledger — this is the
+    only durable record of the reversal.
+    """
+
+    reconciliation = models.ForeignKey(
+        OfflineSaleReconciliation,
+        on_delete=models.CASCADE,
+        related_name="refunds",
+    )
+    method = models.CharField(max_length=10, choices=PaymentMethod.choices)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    reference = models.CharField(max_length=150, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="offlinereconrefund_amount_gt_0",
+            ),
+        ]
+
+    def __str__(self):
+        return f"OfflineReconRefund {self.method} {self.amount}"
+
+
+class OfflineReconciliationCount(UUIDModel):
+    """Physical-count evidence for a stock-conflict RECORDED_AS_SALE.
+
+    ``counted_on_hand`` is what the owner physically counted on the shelf *now*,
+    after the offline goods have already left. One row per affected variant.
+    """
+
+    reconciliation = models.ForeignKey(
+        OfflineSaleReconciliation,
+        on_delete=models.CASCADE,
+        related_name="counts",
+    )
+    variant = models.ForeignKey(
+        "catalog.ProductVariant",
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    counted_on_hand = models.PositiveIntegerField()
+    quantity_in_offline_sale = models.PositiveIntegerField()
+    db_quantity_before = models.IntegerField()
+    # reconstructed_pre_sale - db_quantity_before  (the OFFLINE_RECONCILIATION
+    # correction applied before the sale deduction; may be positive or negative).
+    correction_delta = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["reconciliation", "variant"],
+                name="offlinereconcount_unique_variant",
+            ),
+        ]
+
+    def __str__(self):
+        return f"OfflineReconCount {self.variant_id} -> {self.counted_on_hand}"

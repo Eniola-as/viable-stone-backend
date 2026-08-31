@@ -97,12 +97,25 @@ class TestContractIntegrity:
         assert set(schemes) == {"cookieAuth"}
         assert schemes["cookieAuth"]["type"] == "apiKey"
 
+    # Top-N computed reports capped by ``?limit`` (1..100) — deliberately a bare
+    # array, never a paginated collection. Runtime + G18 contract tests lock the
+    # bare-array shape (apps/finance/tests/test_report_contract.py).
+    _BARE_ARRAY_LIST_OPS = {
+        "reports_best_sellers_list",
+        "reports_slow_movers_list",
+    }
+
     def test_list_endpoints_use_the_paginated_wrapper(self, spec):
-        # every *_list operation returns a Paginated<X>List schema
+        # every *_list operation returns a Paginated<X>List schema, except the
+        # deliberately-bare-array report endpoints above.
         offenders = []
         for item in spec["paths"].values():
             get = item.get("get")
             if not get or not get["operationId"].endswith("_list"):
+                continue
+            if get["operationId"] in self._BARE_ARRAY_LIST_OPS:
+                ref = json.dumps(get["responses"].get("200", {}))
+                assert '"type": "array"' in ref, get["operationId"]
                 continue
             ref = json.dumps(get["responses"].get("200", {}))
             if "Paginated" not in ref:

@@ -99,9 +99,17 @@ class ExpenseViewSet(BranchScopedQuerysetMixin, viewsets.ModelViewSet):
 
 
 class ReportsViewSet(viewsets.GenericViewSet):
-    """Owner-only computed reports. No cost/profit ever reaches an employee."""
+    """Owner-only computed reports. No cost/profit ever reaches an employee.
+
+    None of these actions paginate. ``profit`` / ``inventory`` return one
+    summary object; ``best-sellers`` / ``slow-movers`` return a **bare array**
+    capped by ``?limit`` (1..100, default 10 / 20) — ``page`` / ``page_size``
+    are ignored (G18 / G13). ``pagination_class = None`` keeps the generated
+    schema honest.
+    """
 
     permission_classes = [IsOwner]
+    pagination_class = None
     queryset = Expense.objects.none()  # satisfies router; unused
 
     def _range_kwargs(self, request):

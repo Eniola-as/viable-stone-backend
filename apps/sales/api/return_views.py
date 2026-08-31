@@ -3,12 +3,13 @@ from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
 )
-from rest_framework import mixins, status, viewsets
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.permissions import IsAuthenticatedAndMFAVerified, IsOwner
 from apps.sales.api.discount_serializers import ApproveDiscountSerializer
+from apps.sales.api.list_filters import ApprovalFilterBackend
 from apps.sales.api.return_serializers import (
     ApprovalRequestSerializer,
     ApproveReturnSerializer,
@@ -63,6 +64,11 @@ class ApprovalViewSet(
     queryset = ApprovalRequest.objects.select_related(
         "requested_by", "reviewed_by", "sale"
     )
+    filter_backends = [
+        ApprovalFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     ordering = ["-created_at"]
 
     def get_queryset(self):

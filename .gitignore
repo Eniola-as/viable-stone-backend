@@ -21,3 +21,5 @@ staticfiles/
 *.egg-info/
 build/
 dist/
+# Private uploaded media (expense receipts, product images) — never committed.
+private-media/

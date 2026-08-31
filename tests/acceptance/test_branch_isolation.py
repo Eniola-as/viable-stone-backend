@@ -226,7 +226,9 @@ def seeded(db, branch, owner, employee, login_as, stocked):
             "list": f"{API}/offline/sync-records/",
         },
         "offline-sale-lookup": {
-            "detail": f"{API}/offline/sales/{sale_obj.client_sale_id}/",
+            # record-centric + cashier-bound; a cross-branch caller 404s on the
+            # branch filter before the cashier check.
+            "detail": f"{API}/offline/sales/{sync_record.client_sale_id}/",
             "list": None,
         },
         "notification-detail": {
@@ -365,8 +367,16 @@ def test_matrix_covers_every_branch_scoped_route(seeded):
         "offline-authorization-replace",
         "offline-authorization-end-session",
         "offline-authorization-session-status",
+        # covered by its sibling offline-authorization-detail row above plus the
+        # cross-cashier / cross-branch cases in
+        # apps/sales/tests/test_offline_snapshot_read.py
+        "offline-authorization-snapshot",
         "offline-sync-record-list",
         "offline-sync-record-resolve",
+        # cross-branch owner -> 404 via the branch-scoped queryset; exercised in
+        # apps/sales/tests/test_offline_reconciliation.py
+        # (TestSecurity.test_cross_branch_is_indistinguishable_not_found)
+        "offline-sync-record-reconcile",
     }
     branch_scoped = {
         name for name, tags in CLASSIFICATION.items() if "branch_scoped" in tags

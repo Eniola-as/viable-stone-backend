@@ -203,8 +203,11 @@ class TestSyncEndpoint:
             format="json",
         )
         after = c.get(f"{BASE}/sales/{cid}/").json()
-        assert after["synced"] is True
-        assert after["official_receipt_number"]
+        assert after["outcome"] == "ACCEPTED"
+        assert after["sale_id"]
+        assert after["receipt_number"]
+        assert after["resolved"] is False
+        assert after["resolution_note"] == ""
 
 
 class TestReviewAndLeakage:
@@ -227,18 +230,35 @@ class TestReviewAndLeakage:
         )
         return oc
 
-    def test_owner_lists_and_resolves_a_conflict_record(self, login_as, branch, owner):
+    def test_owner_lists_and_reconciles_a_conflict_record(
+        self, login_as, branch, owner
+    ):
         oc = self._prepare_conflict(login_as, branch, owner)
         listed = oc.get(f"{BASE}/sync-records/?outcome=CONFLICT").json()
         assert listed["count"] == 1
         record_id = listed["results"][0]["id"]
-        resolved = oc.post(
+        # a bare note can no longer close it
+        note_only = oc.post(
             f"{BASE}/sync-records/{record_id}/resolve/",
             {"note": "counted stock, wrote off shrinkage"},
             format="json",
         )
-        assert resolved.status_code == 200
-        assert resolved.json()["resolved"] is True
+        assert note_only.status_code == 409
+        assert note_only.json()["code"] == "offline_reconciliation_required"
+        # a full refund + return reconciles it (customer brought the goods back)
+        reconciled = oc.post(
+            f"{BASE}/sync-records/{record_id}/reconcile/",
+            {
+                "kind": "REFUNDED_AND_RETURNED",
+                "explanation": "customer returned all goods, refunded in full",
+                "all_goods_returned": True,
+                "full_amount_refunded": True,
+                "refunds": [{"method": "CASH", "amount": "3000.00"}],
+            },
+            format="json",
+        )
+        assert reconciled.status_code == 200, reconciled.content
+        assert reconciled.json()["sync_record"]["resolved"] is True
 
     def test_sync_record_response_hides_phone_reference_and_token(
         self, login_as, branch, owner

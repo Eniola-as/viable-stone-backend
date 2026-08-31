@@ -274,9 +274,24 @@ CLASSIFICATION: dict[str, set[str]] = {
         "branch_scoped",
         "read",
     },
+    # GET the frozen signed catalogue snapshot. Branch-scoped queryset, then an
+    # in-view bind to the authorization's cashier + active device via the same
+    # signed-token verification the sync path uses; any other cashier/device/
+    # branch -> indistinguishable 404.
+    "offline-authorization-snapshot": {
+        "authenticated",
+        "mfa",
+        "branch_scoped",
+        "read",
+    },
     "offline-sync-record-list": {"owner", "mfa", "branch_scoped", "read"},
     "offline-sync-record-detail": {"owner", "mfa", "branch_scoped", "read"},
+    # DEPRECATED note-only path — kept as a guard; 409s for every live record.
     "offline-sync-record-resolve": {"owner", "mfa", "branch_scoped", "write"},
+    # Safe structured reconciliation of a CONFLICT / REJECTED /
+    # OWNER_REVIEW_REQUIRED record — owner + MFA; creates / links the official
+    # Sale from trusted retained data, or records a full refund + return.
+    "offline-sync-record-reconcile": {"owner", "mfa", "branch_scoped", "write"},
     "offline-sync": {
         "authenticated",
         "mfa",
@@ -291,5 +306,8 @@ CLASSIFICATION: dict[str, set[str]] = {
         "write",
         "throttle:offline_sync",
     },
+    # Branch-scoped queryset, then an in-view bind to the sync-record's
+    # authorization cashier (`record.authorization.cashier_id == user.id`);
+    # any other cashier / the owner / another branch / unknown id -> 404.
     "offline-sale-lookup": {"authenticated", "mfa", "branch_scoped", "read"},
 }

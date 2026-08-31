@@ -67,6 +67,7 @@
     "offline_authorizations_replace_create",
     "offline_authorizations_retrieve",
     "offline_authorizations_revoke_create",
+    "offline_authorizations_snapshot_retrieve",
     "offline_authorizations_status_retrieve",
     "offline_devices_create",
     "offline_devices_list",
@@ -76,6 +77,7 @@
     "offline_sales_retrieve",
     "offline_sync_create",
     "offline_sync_records_list",
+    "offline_sync_records_reconcile_create",
     "offline_sync_records_resolve_create",
     "offline_sync_records_retrieve",
     "offline_temporary_receipt_create",
@@ -306,6 +308,9 @@
     "/api/v1/offline/authorizations/{id}/revoke/": [
       "post"
     ],
+    "/api/v1/offline/authorizations/{id}/snapshot/": [
+      "get"
+    ],
     "/api/v1/offline/authorizations/{id}/status/": [
       "get"
     ],
@@ -330,6 +335,9 @@
     ],
     "/api/v1/offline/sync-records/{id}/": [
       "get"
+    ],
+    "/api/v1/offline/sync-records/{id}/reconcile/": [
+      "post"
     ],
     "/api/v1/offline/sync-records/{id}/resolve/": [
       "post"

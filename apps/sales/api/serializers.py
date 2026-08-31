@@ -7,7 +7,15 @@ from apps.core.serializers import (
     ControlCharSafeModelSerializer,
     ControlCharSafeSerializer,
 )
-from apps.sales.models import Customer, Payment, PaymentMethod, Sale, SaleItem
+from apps.sales.models import (
+    ApprovalRequest,
+    ApprovalType,
+    Customer,
+    Payment,
+    PaymentMethod,
+    Sale,
+    SaleItem,
+)
 from apps.sales.services.customers import mask_phone
 
 # --------------------------------------------------------------------------- #
@@ -135,6 +143,54 @@ class SaleItemOwnerSerializer(SaleItemReadSerializer):
         read_only_fields = fields
 
 
+class SaleDiscountRequestSummarySerializer(ControlCharSafeModelSerializer):
+    """G22 — minimal, read-only view of a sale's DISCOUNT ``ApprovalRequest``.
+
+    Only DISCOUNT-type requests reach here. Deliberately excludes the draft
+    ``fingerprint``, the ``subtotal`` snapshot, raw user ids and every
+    owner-only financial field. ``status`` reuses the canonical
+    ``ApprovalStatusEnum`` (``PENDING`` / ``APPROVED`` / ``REJECTED``) — the
+    model has no ``CANCELLED``/``EXPIRED`` state, so a request voided by a cart
+    edit or a draft cancel is a ``REJECTED`` row with ``reviewed_by_username``
+    ``null`` and a ``reviewer_note`` that starts ``"Superseded: "``.
+    """
+
+    requested_amount = serializers.SerializerMethodField()
+    approved_amount = serializers.SerializerMethodField()
+    requested_by_username = serializers.CharField(
+        source="requested_by.username", read_only=True
+    )
+    reviewed_by_username = serializers.CharField(
+        source="reviewed_by.username", read_only=True, default=None
+    )
+
+    class Meta:
+        model = ApprovalRequest
+        fields = [
+            "id",
+            "status",
+            "requested_amount",
+            "approved_amount",
+            "reason",
+            "reviewer_note",
+            "requested_by_username",
+            "reviewed_by_username",
+            "reviewed_at",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField())
+    def get_requested_amount(self, obj) -> str | None:
+        # Always set by request_discount(); a decimal string like "1500.00".
+        return (obj.requested_changes or {}).get("requested_amount")
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_approved_amount(self, obj) -> str | None:
+        # Only present once an owner has APPROVED the request.
+        return (obj.requested_changes or {}).get("approved_amount")
+
+
 class SaleReadSerializer(ControlCharSafeModelSerializer):
     items = serializers.SerializerMethodField()
     payments = PaymentReadSerializer(many=True, read_only=True)
@@ -142,6 +198,7 @@ class SaleReadSerializer(ControlCharSafeModelSerializer):
     customer_name = serializers.CharField(
         source="customer.name", read_only=True, default=None
     )
+    discount_request = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -161,6 +218,7 @@ class SaleReadSerializer(ControlCharSafeModelSerializer):
             "completed_at",
             "items",
             "payments",
+            "discount_request",
             "created_at",
         ]
         read_only_fields = fields
@@ -174,6 +232,22 @@ class SaleReadSerializer(ControlCharSafeModelSerializer):
             else SaleItemReadSerializer
         )
         return serializer_cls(sale.items.all(), many=True).data
+
+    @extend_schema_field(SaleDiscountRequestSummarySerializer(allow_null=True))
+    def get_discount_request(self, sale):
+        # ``_discount_requests`` is prefetched by ``sales_visible_to`` (DISCOUNT
+        # only, newest first, requested_by/reviewed_by joined) so a sale list is
+        # never N+1. Fall back to a scoped query for objects built elsewhere.
+        rows = getattr(sale, "_discount_requests", None)
+        if rows is None:
+            rows = list(
+                sale.approval_requests.filter(request_type=ApprovalType.DISCOUNT)
+                .select_related("requested_by", "reviewed_by")
+                .order_by("-created_at")
+            )
+        if not rows:
+            return None
+        return SaleDiscountRequestSummarySerializer(rows[0]).data
 
 
 # --------------------------------------------------------------------------- #

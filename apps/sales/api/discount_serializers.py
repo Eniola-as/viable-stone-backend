@@ -5,6 +5,7 @@ from rest_framework import serializers
 from apps.core.serializers import (
     ControlCharSafeSerializer,
 )
+from apps.sales.api.serializers import CustomerInlineSerializer
 from apps.sales.models import PaymentMethod
 
 
@@ -16,7 +17,8 @@ class _CartLineSerializer(ControlCharSafeSerializer):
 class DraftCreateSerializer(ControlCharSafeSerializer):
     client_sale_id = serializers.UUIDField()
     items = _CartLineSerializer(many=True)
-    customer = serializers.DictField(required=False)
+    # G9 — same shape as SaleCreateRequest.customer; omitted / null -> walk-in.
+    customer = CustomerInlineSerializer(required=False, allow_null=True)
 
     def validate_items(self, items):
         if not items:

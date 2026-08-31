@@ -259,6 +259,12 @@ class StockMovementSerializer(ControlCharSafeModelSerializer):
         read_only_fields = fields
 
 
+class StockValueSerializer(ControlCharSafeSerializer):
+    """G5 — the ``/inventory/stock-value/`` summary (owner). Cost total only."""
+
+    stock_value = serializers.CharField(read_only=True)
+
+
 class OpeningStockSerializer(ControlCharSafeSerializer):
     variant = serializers.PrimaryKeyRelatedField(queryset=ProductVariant.objects.all())
     quantity = serializers.IntegerField(min_value=1)

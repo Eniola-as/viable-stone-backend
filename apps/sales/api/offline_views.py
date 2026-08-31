@@ -11,7 +11,7 @@ from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import mixins, status, viewsets
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
@@ -26,23 +26,29 @@ from apps.accounts.models import (
 from apps.core.exceptions import APIError, Conflict
 from apps.core.permissions import IsAuthenticatedAndMFAVerified, IsOwner
 from apps.core.services.audit import record_audit
+from apps.sales.api.list_filters import OfflineSyncRecordFilterBackend
 from apps.sales.api.offline_serializers import (
     OfflineAuthorizationCreateSerializer,
     OfflineAuthorizationReplaceSerializer,
     OfflineAuthorizationRevokeSerializer,
     OfflineAuthorizationSerializer,
     OfflineAuthorizationStatusSerializer,
+    OfflineCatalogueSnapshotSerializer,
     OfflineDeviceCreateSerializer,
     OfflineDeviceSerializer,
+    OfflineReconcileRequestSerializer,
+    OfflineReconciliationResultSerializer,
+    OfflineSaleLookupSerializer,
     OfflineSessionEndSerializer,
     OfflineSyncRecordResolveSerializer,
     OfflineSyncRecordSerializer,
     OfflineSyncRequestSerializer,
-    OfflineSyncResultSerializer,
+    OfflineSyncResponseSerializer,
     OfflineTemporaryReceiptRequestSerializer,
 )
-from apps.sales.models import OfflineSaleSyncRecord, Sale
+from apps.sales.models import OfflineSaleSyncRecord
 from apps.sales.services import offline as offline_service
+from apps.sales.services import offline_reconciliation
 from apps.sales.services.offline import (
     OfflinePaymentInput,
     OfflineSaleInput,
@@ -320,6 +326,46 @@ class OfflineAuthorizationViewSet(
         authorization = self.get_object()
         return Response(offline_service.authorization_status(authorization))
 
+    @extend_schema(
+        responses={200: OfflineCatalogueSnapshotSerializer},
+        summary="Read the active session's signed fixed-price catalogue snapshot",
+        description=(
+            "The disconnected offline device reads this once at session start to "
+            "build sales against fixed prices and quantities, then presents the "
+            "returned `signed_token` back to `/offline/sync/` and "
+            "`/offline/temporary-receipt/` as `authorization_token`. The snapshot "
+            "is frozen for the life of the session — repeated reads are identical "
+            "and never pick up newer prices or stock. Response is "
+            "`Cache-Control: private, no-store`.\n\n"
+            "Binding is proven server-side: the GET carries no body and no "
+            "client token; the server re-verifies its own stored `signed_token` "
+            "(the same HMAC + constant-time check `/offline/sync/` uses) and the "
+            "verified branch / device / cashier must match the row and the "
+            "caller, and the bound device must still be the branch's one ACTIVE "
+            "registered device.\n\n"
+            "**404 (indistinguishable, reveals nothing):** wrong cashier, wrong "
+            "branch, unknown id, or the bound device is no longer the active "
+            "registered device. **409 standard error envelope (the session is "
+            "provably yours but over):** `offline_authorization_expired` when "
+            "expired, `offline_session_not_active` when revoked / replaced / "
+            "force-closed / closed. **400 `invalid_signature`:** the stored "
+            "token fails verification."
+        ),
+        tags=["Offline"],
+    )
+    @action(detail=True, methods=["get"], url_path="snapshot")
+    def snapshot(self, request, pk=None):
+        authorization = self.get_object()
+        try:
+            payload = offline_service.catalogue_snapshot_for_cashier(
+                authorization=authorization, user=request.user
+            )
+        except offline_service._NotFound as exc:
+            raise NotFound("No such offline authorization.") from exc
+        response = Response(OfflineCatalogueSnapshotSerializer(payload).data)
+        response["Cache-Control"] = "private, no-store"
+        return response
+
 
 class _TokenBoundView(APIView):
     permission_classes = [IsAuthenticatedAndMFAVerified]
@@ -338,8 +384,13 @@ class _TokenBoundView(APIView):
 class OfflineSyncView(_TokenBoundView):
     @extend_schema(
         request=OfflineSyncRequestSerializer,
-        responses={200: OfflineSyncResultSerializer(many=True)},
+        responses={200: OfflineSyncResponseSerializer},
         summary="Synchronise a batch of offline sales (device-bound)",
+        description=(
+            'Returns one object — `{ "results": [OfflineSyncResult, ...] }` — '
+            "with exactly one entry per submitted sale, in device-sequence "
+            "order. It is never a bare array, even for a single-sale batch."
+        ),
         tags=["Offline"],
     )
     def post(self, request):
@@ -356,11 +407,9 @@ class OfflineSyncView(_TokenBoundView):
             request=request,
         )
         return Response(
-            {
-                "results": OfflineSyncResultSerializer(
-                    [r.__dict__ for r in results], many=True
-                ).data
-            }
+            OfflineSyncResponseSerializer(
+                {"results": [r.__dict__ for r in results]}
+            ).data
         )
 
 
@@ -393,23 +442,30 @@ class OfflineSyncRecordViewSet(
     serializer_class = OfflineSyncRecordSerializer
     permission_classes = [IsOwner]
     queryset = OfflineSaleSyncRecord.objects.none()
+    # ``?outcome=`` / ``?resolved=`` are validated + documented by this backend
+    # (G3); it only narrows the already branch-scoped, owner-only list.
+    filter_backends = [
+        OfflineSyncRecordFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
 
     def get_queryset(self):
-        queryset = OfflineSaleSyncRecord.objects.filter(
+        return OfflineSaleSyncRecord.objects.filter(
             branch_id=self.request.user.branch_id
         ).select_related("sale")
-        outcome = self.request.query_params.get("outcome")
-        if outcome:
-            queryset = queryset.filter(outcome=outcome)
-        resolved = self.request.query_params.get("resolved")
-        if resolved in {"true", "false"}:
-            queryset = queryset.filter(resolved=resolved == "true")
-        return queryset
 
     @extend_schema(
         request=OfflineSyncRecordResolveSerializer,
         responses={200: OfflineSyncRecordSerializer},
-        summary="Resolve a retained conflict / review record (owner)",
+        summary="DEPRECATED note-only resolve — use reconcile (owner)",
+        description=(
+            "A CONFLICT / REJECTED / OWNER_REVIEW_REQUIRED record affects stock, "
+            "revenue, payments and COGS and can no longer be closed with a note: "
+            "this returns `409 offline_reconciliation_required`. Use "
+            "`POST /api/v1/offline/sync-records/{id}/reconcile/`. Historical "
+            "already-resolved records are unaffected."
+        ),
         tags=["Offline"],
     )
     @action(detail=True, methods=["post"])
@@ -425,38 +481,139 @@ class OfflineSyncRecordViewSet(
         )
         return Response(OfflineSyncRecordSerializer(updated).data)
 
+    @extend_schema(
+        request=OfflineReconcileRequestSerializer,
+        responses={200: OfflineReconciliationResultSerializer},
+        summary="Reconcile an accounting-impacting sync record (owner + MFA)",
+        description=(
+            "The safe resolution of a CONFLICT / REJECTED / OWNER_REVIEW_REQUIRED "
+            "record — no Sale, stock, payment, revenue or COGS exists for it yet. "
+            "Polymorphic on `kind`:\n\n"
+            "* `RECORDED_AS_SALE` — the backend re-reads the retained payload and "
+            "the *verified* signed snapshot and creates the official Sale itself "
+            "(authoritative prices / COGS / one receipt). Needs `counts` (one per "
+            "affected variant) when the outcome is `CONFLICT` or stock is short. "
+            "`payment_references` is a **structured** list — "
+            "`[{ payment_index, reference }]` — where `payment_index` is the "
+            "0-based position in the record's `retained_payments` read model; one "
+            "entry per retained Transfer/POS line, so a split batch is never "
+            "mis-mapped. `amount_source` on the result is always "
+            "`SNAPSHOT_VERIFIED` (a Sale is only built from a verified total).\n"
+            "* `REFUNDED_AND_RETURNED` — full return + full refund only; no Sale "
+            "/ Payment / stock movement is created. `refunds` must total the "
+            "money **actually collected** from the customer — NOT the catalogue "
+            "total. That amount is trusted automatically only when the retained "
+            "device payments parse cleanly and equal the verified snapshot total "
+            "(`amount_source: RETAINED_PAYMENTS_MATCHED_TO_SNAPSHOT`). If they "
+            "disagree, or the retained data cannot be verified (broken "
+            "signature / binding, malformed items), the request must carry "
+            "`owner_attestation: true` + `attested_offline_total` (the amount "
+            "actually collected) + a ≥40-char `explanation`; the result is "
+            "flagged `amount_source: OWNER_ATTESTED` (never presented as "
+            "cryptographically verified). A non-positive collected amount -> "
+            "`no_payment_to_refund` (it is not a refund). The owner-only "
+            "response carries `verified_snapshot_total` + `retained_payments_"
+            "total` diagnostics; those, and owner-entered `refunds[].reference`, "
+            "are excluded from the cashier `OfflineSaleLookup` and from every "
+            "audit-log row.\n"
+            "* `LINKED_EXISTING_SALE` — fallback when the retained data cannot be "
+            "verified; links an owner-entered COMPLETED sale in this branch. The "
+            "backend compares three dimensions — (1) line items & quantities, "
+            "(2) payment methods & amounts, (3) transaction total — against the "
+            "retained record; any comparable dimension that mismatches -> "
+            "`sale_incompatible`. `link_verification` reports `FULL` (all three "
+            "comparable and matched), `PARTIAL` (every comparable one matched, "
+            "fewer than three comparable) or `MANUAL_ATTESTED` (none comparable "
+            "— needs `owner_attestation: true` + a ≥40-char `explanation`). "
+            "Always `linked_manually: true`.\n\n"
+            "Owner + MFA. Idempotent per record. A resolved record cannot be "
+            "reconciled again. Stable codes: `offline_reconciliation_required`, "
+            "`offline_record_not_reconcilable`, `offline_record_already_resolved`, "
+            "`physical_count_required`, `count_variant_missing`, "
+            "`count_variant_unexpected`, `count_variant_duplicated`, "
+            "`invalid_count`, `reference_required`, `payment_reference_index_invalid`, "
+            "`payment_reference_duplicated`, `payment_reference_unexpected`, "
+            "`payment_mismatch`, `refund_total_mismatch`, `refund_required`, "
+            "`invalid_refund_amount`, `no_payment_to_refund`, "
+            "`offline_total_unverifiable`, `attested_total_required`, "
+            "`attestation_explanation_too_short`, "
+            "`partial_reconciliation_unsupported`, `offline_data_untrusted`, "
+            "`sale_reference_required`, `sale_already_linked`, `sale_incompatible`, "
+            "`manual_verification_required`, `not_found`."
+        ),
+        tags=["Offline"],
+    )
+    @action(detail=True, methods=["post"])
+    def reconcile(self, request, pk=None):
+        record = self.get_object()
+        serializer = OfflineReconcileRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            reconciliation = offline_reconciliation.reconcile_sync_record(
+                record=record,
+                owner=request.user,
+                request=request,
+                **serializer.validated_data,
+            )
+        except offline_service._NotFound as exc:
+            raise NotFound("No such sale.") from exc
+        record.refresh_from_db()
+        return Response(
+            OfflineReconciliationResultSerializer(
+                {"sync_record": record, "reconciliation": reconciliation}
+            ).data
+        )
+
 
 class OfflineSaleLookupView(APIView):
     permission_classes = [IsAuthenticatedAndMFAVerified]
 
     @extend_schema(
-        responses={200: dict},
-        summary="Map a client_sale_id to its official Sale + receipt number",
+        responses={200: OfflineSaleLookupSerializer},
+        summary="Look up one offline sale: outcome, resolution state and Sale mapping",
+        description=(
+            "The bound cashier's device polls this to reconcile a queued sale "
+            "after the owner acts. Readable only by the cashier of the "
+            "authorization that submitted this `client_sale_id` (the same "
+            "binding as `POST /offline/sync/`); any other user, or an unknown "
+            "id, gets an indistinguishable `404`.\n\n"
+            "Returned for a record in **any** outcome — not only once an "
+            "official Sale exists — so the device can clear a held row when the "
+            "owner resolves a `CONFLICT` without creating a Sale, or resolves a "
+            "`REJECTED` (which never creates one): `resolved` / `resolved_at` / "
+            "`resolution_note` flip while `outcome` stays `CONFLICT` / "
+            "`REJECTED` and `sale_id` stays `null`."
+        ),
         tags=["Offline"],
     )
     def get(self, request, client_sale_id):
-        branch_id = request.user.branch_id
         record = (
             OfflineSaleSyncRecord.objects.filter(
-                branch_id=branch_id, client_sale_id=client_sale_id
+                branch_id=request.user.branch_id, client_sale_id=client_sale_id
             )
-            .select_related("sale")
+            .select_related("authorization", "sale", "reconciliation")
             .first()
         )
-        sale = Sale.objects.filter(
-            branch_id=branch_id, client_sale_id=client_sale_id
-        ).first()
-        if record is None and sale is None:
+        if record is None or record.authorization.cashier_id != request.user.id:
             raise NotFound("Unknown client sale reference.")
-        official = record.sale if (record and record.sale_id) else sale
+        reconciliation = getattr(record, "reconciliation", None)
         return Response(
-            {
-                "client_sale_id": str(client_sale_id),
-                "synced": official is not None,
-                "outcome": record.outcome if record else None,
-                "sale_id": str(official.id) if official else None,
-                "official_receipt_number": (
-                    official.receipt_number if official else None
-                ),
-            }
+            OfflineSaleLookupSerializer(
+                {
+                    "client_sale_id": record.client_sale_id,
+                    "device_sequence": record.device_sequence,
+                    "outcome": record.outcome,
+                    "detail_code": record.detail_code,
+                    "sale_id": record.sale_id,
+                    "receipt_number": (
+                        record.sale.receipt_number if record.sale_id else None
+                    ),
+                    "resolved": record.resolved,
+                    "resolved_at": record.resolved_at,
+                    "resolution_note": record.resolution_note,
+                    "resolution_kind": (
+                        reconciliation.kind if reconciliation is not None else None
+                    ),
+                }
+            ).data
         )
