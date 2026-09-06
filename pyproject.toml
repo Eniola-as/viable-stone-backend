@@ -22,7 +22,7 @@ dependencies = [
     "Pillow",
     "django-axes",
     "pywebpush",
-    "reportlab>=4.2,<5",
+    "reportlab>=4.2,<6",
     "gunicorn",
     "whitenoise",
     "sentry-sdk[django]",
