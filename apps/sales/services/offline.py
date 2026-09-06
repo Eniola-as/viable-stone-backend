@@ -604,7 +604,11 @@ def sync_offline_batch(
         )
 
     price_by_id = {row["variant_id"]: row for row in snapshot["variants"]}
-    review_mode = authorization.needs_owner_review
+    # The session is only allowed to sync straight through while it is ACTIVE
+    # and still inside its window. Anything else — ended / force-ended / revoked
+    # / replaced, or an ACTIVE token whose window has lapsed — holds every sale
+    # in the batch for the owner to review.
+    review_mode = authorization.needs_owner_review or authorization.is_expired
     ordered = sorted(sales, key=lambda s: int(s.device_sequence))
 
     # Duplicate device sequences inside the batch (different client ids).
@@ -734,12 +738,19 @@ def _sync_one(
         return _existing_result(record)
 
     if review_mode:
+        # A non-ACTIVE status names itself (closed / force_closed / revoked /
+        # replaced); an ACTIVE-but-lapsed window is reported as "expired".
+        detail_code = (
+            authorization.status.lower()
+            if authorization.status != OfflineAuthorizationStatus.ACTIVE
+            else "expired"
+        )
         record = _record_outcome(
             branch=branch,
             authorization=authorization,
             sale_input=sale_input,
             outcome=OfflineSyncOutcome.OWNER_REVIEW_REQUIRED,
-            detail_code=authorization.status.lower(),
+            detail_code=detail_code,
             request=request,
             audit=True,
         )

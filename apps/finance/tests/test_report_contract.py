@@ -49,20 +49,23 @@ class TestBareArrayResponse:
 
     def test_limit_caps_rows_and_page_params_are_ignored(self, login_as, owner, branch):
         cashier = EmployeeFactory(branch=branch)
-        for i in range(4):
-            v = stocked_variant(
-                branch,
-                owner,
-                price="100.00",
-                quantity=10,
-                unit_cost="60",
-                sku=f"BS-{i}",
-            )
-            with freeze_time("2026-08-10 09:00:00"):
+        # Freeze the whole test — sales AND the `period=month` query — to one
+        # instant so the sales always fall inside the resolved window,
+        # regardless of the real calendar date.
+        with freeze_time("2026-08-10 09:00:00"):
+            for i in range(4):
+                v = stocked_variant(
+                    branch,
+                    owner,
+                    price="100.00",
+                    quantity=10,
+                    unit_cost="60",
+                    sku=f"BS-{i}",
+                )
                 _sell(branch, cashier, owner, v, i + 1, str((i + 1) * 100))
-        res = login_as(owner).get(
-            f"{REPORTS}/best-sellers/?period=month&limit=2&page=2&page_size=1"
-        )
+            res = login_as(owner).get(
+                f"{REPORTS}/best-sellers/?period=month&limit=2&page=2&page_size=1"
+            )
         assert res.status_code == 200
         rows = res.json()
         assert isinstance(rows, list)

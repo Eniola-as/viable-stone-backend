@@ -8,7 +8,11 @@ import pytest
 from django.test import override_settings
 from django.utils import timezone
 
-from apps.accounts.models import DeviceStatus, RegisteredDevice
+from apps.accounts.models import (
+    DeviceStatus,
+    OfflineAuthorizationStatus,
+    RegisteredDevice,
+)
 from apps.accounts.tests.factories import EmployeeFactory, RegisteredDeviceFactory
 from apps.catalog.services.pricing import set_active_price
 from apps.core.exceptions import APIError
@@ -25,6 +29,7 @@ from apps.sales.models import (
 from apps.sales.services.offline import (
     OfflinePaymentInput,
     OfflineSaleInput,
+    end_offline_session,
     issue_offline_authorization,
     revoke_offline_authorization,
     sync_offline_batch,
@@ -193,12 +198,17 @@ class TestReject:
         assert result.outcome == OfflineSyncOutcome.REJECTED
         assert result.detail_code == "outside_window"
 
-    def test_late_sync_of_an_in_window_sale_still_accepted(self, branch, owner):
+    def test_late_sync_after_the_window_expired_routes_to_owner_review(
+        self, branch, owner
+    ):
         auth, snap, _c, made = _session(branch, owner, [("PNT-1", "1000.00", 10)])
-        # authorization already expired, but the sale was made inside the window
+        # authorization is still ACTIVE-status but its window has lapsed; the
+        # sale itself was made inside the window. The session is over, so the
+        # owner reviews it rather than it syncing straight through.
         auth.issued_at = timezone.now() - timedelta(hours=30)
         auth.expires_at = timezone.now() - timedelta(hours=6)
         auth.save(update_fields=["issued_at", "expires_at", "updated_at"])
+        assert auth.status == OfflineAuthorizationStatus.ACTIVE and auth.is_expired
         s = _sale(
             seq=1,
             items=[{"variant_id": str(made["PNT-1"].id), "quantity": 1}],
@@ -208,7 +218,13 @@ class TestReject:
         [result] = sync_offline_batch(
             branch=branch, authorization=auth, snapshot=snap, sales=[s]
         )
-        assert result.outcome == OfflineSyncOutcome.ACCEPTED
+        assert result.outcome == OfflineSyncOutcome.OWNER_REVIEW_REQUIRED
+        assert result.detail_code == "expired"
+        assert not Sale.objects.filter(client_sale_id=s.client_sale_id).exists()
+        assert (
+            InventoryBalance.objects.get(branch=branch, variant=made["PNT-1"]).quantity
+            == 10
+        )
 
 
 class TestOrderingAndDuplicates:
@@ -322,10 +338,49 @@ class TestConflictAndReview:
             branch=branch, authorization=auth, snapshot=snap, sales=[s]
         )
         assert result.outcome == OfflineSyncOutcome.OWNER_REVIEW_REQUIRED
+        assert result.detail_code == "revoked"
         assert not Sale.objects.filter(client_sale_id=s.client_sale_id).exists()
         assert (
             OfflineSaleSyncRecord.objects.get(client_sale_id=s.client_sale_id).outcome
             == OfflineSyncOutcome.OWNER_REVIEW_REQUIRED
+        )
+
+    def test_closed_session_routes_everything_to_owner_review(self, branch, owner):
+        # The owner ended the session normally (nothing pending) -> CLOSED. A
+        # device that still has a local queue then syncs against the stale
+        # token: those sales are held for the owner, not applied live.
+        auth, snap, _c, made = _session(branch, owner, [("PNT-1", "1000.00", 10)])
+        end_offline_session(authorization=auth, owner=owner)
+        auth.refresh_from_db()
+        assert auth.status == OfflineAuthorizationStatus.CLOSED
+        vid = str(made["PNT-1"].id)
+        results = sync_offline_batch(
+            branch=branch,
+            authorization=auth,
+            snapshot=snap,
+            sales=[
+                _sale(
+                    seq=1,
+                    items=[{"variant_id": vid, "quantity": 1}],
+                    payments=_cash("1000.00"),
+                ),
+                _sale(
+                    seq=2,
+                    items=[{"variant_id": vid, "quantity": 1}],
+                    payments=_cash("1000.00"),
+                ),
+            ],
+        )
+        assert {r.outcome for r in results} == {
+            OfflineSyncOutcome.OWNER_REVIEW_REQUIRED
+        }
+        assert {r.detail_code for r in results} == {"closed"}
+        assert not Sale.objects.filter(
+            source=SaleSource.OFFLINE, branch=branch
+        ).exists()
+        assert (
+            InventoryBalance.objects.get(branch=branch, variant=made["PNT-1"]).quantity
+            == 10
         )
 
 

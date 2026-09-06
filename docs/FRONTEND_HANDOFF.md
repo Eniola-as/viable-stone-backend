@@ -65,26 +65,28 @@ if it changes without a reviewed update. 101 paths, 142 operations. Treat a
 > - **end-session is owner-only** (documented, unchanged) — a cashier calling
 >   `POST /offline/authorizations/{id}/end-session/` gets
 >   `403 permission_denied`.
-> - **Safe offline reconciliation (2026-08-31).** New
+> - **Safe offline reconciliation (final, 2026-09-05).** New
 >   `POST /api/v1/offline/sync-records/{id}/reconcile/` (owner + MFA,
 >   polymorphic on `kind`) replaces the unsafe note-only `resolve/`, which now
 >   `409`s for accounting-impacting records. The backend creates / links the
 >   official Sale itself from the retained payload + verified signed snapshot,
->   or records a full refund + return. `OfflineSaleLookup` gains a safe
->   `resolution_kind`. Adds `MovementType.OFFLINE_RECONCILIATION`. See
->   **Offline sale reconciliation**. **Contract not final — do not wire the
->   reconcile screen yet.** Corrections in review: `payment_references` is now
->   `[{ payment_index, reference }]` (was a positional string list); a
->   `retained_payments` read model on the sync record tells the owner which
->   index is which; `REFUNDED_AND_RETURNED` refunds the money **actually
->   collected** (not the catalogue total) — trusted only when retained payments
->   equal the verified snapshot (`amount_source:
->   RETAINED_PAYMENTS_MATCHED_TO_SNAPSHOT`), else `owner_attestation` +
->   `attested_offline_total` → `OWNER_ATTESTED` (with owner-only
->   `verified_snapshot_total` / `retained_payments_total` diagnostics); a
->   non-positive collected amount → `no_payment_to_refund`;
->   `LINKED_EXISTING_SALE` gains three-dimension checks + `link_verification`
->   (`FULL` | `PARTIAL` | `MANUAL_ATTESTED`).
+>   or records a full refund + return. `OfflineSaleLookup` and
+>   `OfflineSyncRecord` gain a safe `resolution_kind`; `OfflineSyncRecord`
+>   gains the owner-only `retained_payments` read model. Adds
+>   `MovementType.OFFLINE_RECONCILIATION`. Contract points: `payment_references`
+>   is `[{ payment_index, reference }]` (0-based into `retained_payments`);
+>   `REFUNDED_AND_RETURNED` refunds the money **actually collected** (not the
+>   catalogue total) — trusted only when retained payments equal the verified
+>   snapshot (`amount_source: RETAINED_PAYMENTS_MATCHED_TO_SNAPSHOT`), else
+>   `owner_attestation` + `attested_offline_total` → `OWNER_ATTESTED` (with
+>   owner-only `verified_snapshot_total` / `retained_payments_total`
+>   diagnostics); a non-positive collected amount → `no_payment_to_refund`
+>   (no reconciliation path yet — see **Offline sale reconciliation**);
+>   `LINKED_EXISTING_SALE` compares three dimensions + reports
+>   `link_verification` (`FULL` | `PARTIAL` | `MANUAL_ATTESTED`). **Server
+>   prerequisite:** the instance must have run `manage.py migrate`
+>   (`sales.0004`, `inventory.0002`) — a server on older schema returns
+>   `500` on every `reconcile` call.
 
 ## API base URL
 
@@ -542,23 +544,32 @@ Full rules in `openapi.yml` under the `Offline` tag; the shape:
      (already synced; same `sale_id`/`receipt_number`) · `CONFLICT` (real sale,
      can't apply now — retained for the owner) · `REJECTED` (invalid payload —
      the device already took real money, so the owner must reconcile it) ·
-     `OWNER_REVIEW_REQUIRED` (session was revoked/replaced/force-closed first).
+     `OWNER_REVIEW_REQUIRED` (the offline session was over — ended,
+     force-ended, revoked, replaced, or its window had lapsed — when this sale
+     synced).
    * `detail_code` — `""` for `ACCEPTED`/`DUPLICATE`; otherwise one of:
 
      | with `outcome` | `detail_code` values |
      |---|---|
      | `REJECTED` | `duplicate_sequence`, `outside_window`, `invalid_timestamp`, `empty_cart`, `price_not_in_snapshot`, `invalid_quantity`, `payment_required`, `invalid_payment_method`, `invalid_payment_amount`, `reference_required`, `invalid_tendered_amount`, `payment_mismatch`, `variant_not_found`, `variant_unavailable` |
      | `CONFLICT` | `stock_not_available`, `sale_in_progress` |
-     | `OWNER_REVIEW_REQUIRED` | `revoked`, `replaced`, `force_closed` |
+     | `OWNER_REVIEW_REQUIRED` | `closed`, `force_closed`, `revoked`, `replaced`, `expired` |
+
+   `OWNER_REVIEW_REQUIRED` covers **every** sale in a batch synced against a
+   session that is no longer live: `closed` / `force_closed` (owner ended it),
+   `revoked` / `replaced` (owner pulled it), or `expired` (an ACTIVE token
+   whose ≤24h window had lapsed — the sale itself was still in-window, but the
+   session is over). None of these touch stock or create a Sale; they queue for
+   `POST /offline/sync-records/{id}/reconcile/` like any other held record.
 
    Suggested wording: `payment_mismatch` → "the amount tendered on the device
    doesn't match the snapshot price"; `stock_not_available` → "stock ran out
    before this sale reached the server — owner to review"; `outside_window` →
    "sale timestamped outside the authorised session window"; `duplicate_sequence`
-   → "two queued sales share a device sequence number"; `revoked`/`replaced`/
-   `force_closed` → "the offline session was closed before this sale synced —
-   owner to review". Retrying the whole batch is safe (idempotent per
-   `client_sale_id`).
+   → "two queued sales share a device sequence number"; `closed` / `revoked` /
+   `replaced` / `force_closed` / `expired` → "the offline session was over
+   before this sale synced — owner to review". Retrying the whole batch is safe
+   (idempotent per `client_sale_id`).
 7. **`GET /api/v1/offline/sales/{client_sale_id}/`** — the bound cashier's
    device polls this to reconcile a queued sale after the owner acts. `200` is
    one object (`OfflineSaleLookup`):

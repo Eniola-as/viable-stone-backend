@@ -192,9 +192,14 @@ class OfflineAuthorizationStatus(models.TextChoices):
 
 
 # Statuses whose pending offline sales must not sync automatically; the owner
-# has to review them explicitly.
+# has to review them explicitly. Every non-ACTIVE status qualifies — the
+# session is over one way or another (ended, force-ended, revoked or replaced),
+# so a device still holding that token must not push sales straight through.
+# (An ACTIVE authorization past its window is handled separately, at sync time,
+# via ``is_expired``.)
 OFFLINE_REVIEW_STATUSES = frozenset(
     {
+        OfflineAuthorizationStatus.CLOSED,
         OfflineAuthorizationStatus.FORCE_CLOSED,
         OfflineAuthorizationStatus.REVOKED,
         OfflineAuthorizationStatus.REPLACED,

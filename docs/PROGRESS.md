@@ -1152,3 +1152,80 @@ report 112, 0 skipped:
     review) — deliberately out of scope here.
   * Full battery re-run — see session report. **No** commit / push / deploy /
     frontend sync.
+
+- 2026-09-05: Tasks 1–6 committed as `2fd1e82` on `main` (follow-up commit,
+  no history rewritten, not pushed). Contract confirmed **final** and the
+  "do not wire the reconcile screen yet" callout in `FRONTEND_HANDOFF.md`
+  replaced with the settled note (+ the `manage.py migrate` server
+  prerequisite). Frontend (`viable-stone-frontend-e3`) reported it built the
+  full reconcile flow (all 3 kinds, 27 codes, `retained_payments` /
+  `resolution_kind`, cashier-safe diagnostics; all their gates green).
+  * **Backlog — G24 (deferred, low-risk, defensive).** `OfflineSyncRecord.
+    redacted_payload` has **no OpenAPI schema** — it serialises as an opaque
+    `readOnly` blob. The frontend's RECORDED_AS_SALE physical-count form needs
+    the affected-variant list and currently reads the blob defensively
+    against the shape `apps/sales/services/offline.py::_redacted()` /
+    `offline_reconciliation.py::_affected_quantities()` produce (returning
+    `[]` on anything unexpected). Requested: publish that shape as a typed
+    `readOnly` object (named properties: `device_sequence`, `customer_name`,
+    `items: [{variant_id, quantity}]`, `payments: [{method, amount,
+    has_reference}]`) so the frontend stops reverse-engineering internals.
+    Purely additive to the schema; no runtime or contract-surface change.
+    **Not implemented this turn** (owner deferred).
+  * **Dev-DB migration-state note.** `sales.0004` was rebuilt in place three
+    times during Tasks 5–6. A dev/demo instance that applied an *earlier*
+    `0004` shows it as `[X]` in `showmigrations` but is missing
+    `verified_snapshot_total` / `retained_payments_total` and has
+    `amount_source` at `varchar(20)` — every `reconcile` call then `500`s in
+    `_make_reconciliation`. Fix on such an instance: `manage.py migrate sales
+    0003` then `manage.py migrate`. The committed `0004` is already final;
+    fresh installs / CI / the test DB are unaffected.
+
+- 2026-09-06: **Applied the dev-DB `sales.0004` fix + closed the stale-session
+  sync gap** (frontend integration follow-ups; not committed).
+  * Ran `migrate sales 0003 && migrate` on the dev DB — schema is now correct
+    (`amount_source varchar(40)` + the two diagnostic columns). **Data
+    mishap:** the reverse dropped the 3 (thought-empty) reconciliation tables
+    while one real `OfflineSaleReconciliation` + `OfflineReconciliationRefund`
+    row existed (created between the empty-check and the run). Rebuilt that row
+    from the surviving `AuditLog` `offline.reconcile` entry + the retained
+    request body — `REFUNDED_AND_RETURNED`, `OWNER_ATTESTED`, `refund_total
+    222500.00`, one TRANSFER refund `222500.00` ref "sent back", `resolved_at`
+    preserved (`created_at` necessarily new; `verified_snapshot_total` /
+    `retained_payments_total` unrecoverable → NULL). An
+    `offline.reconcile_row_recreated` audit row documents the reconstruction.
+    `list_unsafe_offline_resolutions` back to 5.
+  * **Stale-session sync gap (CLOSED-token) — fixed.** `POST /offline/sync/`
+    verifies token signature + binding but not `authorization.status`, and
+    `sync_offline_batch` only diverted to `OWNER_REVIEW_REQUIRED` for
+    `needs_owner_review` = {FORCE_CLOSED, REVOKED, REPLACED}. A device holding a
+    stale token for a **CLOSED** session (or an **expired** ACTIVE one — window
+    lapsed) synced its queue as live ACCEPTED/CONFLICT/REJECTED. Observed in
+    the frontend's access log (a sync 11s after `end-session`).
+    - `OFFLINE_REVIEW_STATUSES` gains `CLOSED` (now = every non-ACTIVE status).
+    - `sync_offline_batch`: `review_mode = needs_owner_review or is_expired`.
+    - `_sync_one` review-branch `detail_code`: `closed` / `force_closed` /
+      `revoked` / `replaced` for a non-ACTIVE status, `expired` for an
+      ACTIVE-but-lapsed window.
+    - `OFFLINE_SYNC_DETAIL_CODES_DOC` + `FRONTEND_HANDOFF.md` list the two new
+      OWNER_REVIEW_REQUIRED codes (`closed`, `expired`). **No path / method /
+      operationId / component-schema change** — only the `detail_code`
+      help-text string; `openapi.yml` regenerated (`--fail-on-warn` clean,
+      byte-stable), `openapi_contract_snapshot.json` unchanged.
+    - `test_offline_sync.py::test_late_sync_of_an_in_window_sale_still_accepted`
+      **reversed** → `..._after_the_window_expired_routes_to_owner_review`
+      (deliberate: an expired session's in-window late sale now holds for the
+      owner instead of auto-accepting). New tests: CLOSED session → all
+      OWNER_REVIEW_REQUIRED (`closed`); expired auth → OWNER_REVIEW_REQUIRED
+      (`expired`). `test_offline_models.py` helper test extended for all four
+      review statuses.
+  * **Fixed — calendar-rollover test failures** (pre-existing, unrelated to the
+    gap fix; surfaced only because the date advanced past 2026-08-31):
+    `test_business_journeys.py::{test_journey_expenses_and_reports,
+    test_journey_resellable_and_damaged_returns}` hardcoded
+    `period=custom&start=2026-08-01&end=2026-08-31` while creating all activity
+    "now" → now query `period=month` with `expense_date = today`;
+    `test_report_contract.py::test_limit_caps_rows_and_page_params_are_ignored`
+    froze the sales to Aug 10 but not the `period=month` query → the whole test
+    body (sales + query) is now inside one `freeze_time` block. Full suite back
+    to green.

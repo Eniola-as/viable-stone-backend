@@ -78,9 +78,16 @@ class TestOfflineAuthorization:
             branch, issued_at=past - timedelta(hours=24), expires_at=past
         )
         assert auth.is_expired is True
+        # the helper is a pure status check — expiry is handled at sync time
         assert auth.needs_owner_review is False
-        auth.status = OfflineAuthorizationStatus.REVOKED
-        assert auth.needs_owner_review is True
+        for status in (
+            OfflineAuthorizationStatus.CLOSED,
+            OfflineAuthorizationStatus.FORCE_CLOSED,
+            OfflineAuthorizationStatus.REVOKED,
+            OfflineAuthorizationStatus.REPLACED,
+        ):
+            auth.status = status
+            assert auth.needs_owner_review is True
 
 
 class TestOfflineSyncRecord:

@@ -404,11 +404,9 @@ def test_journey_resellable_and_damaged_returns(
     assert ok2.status_code == 200 and ok2.json()["total"] == "1000.00"
     assert _stock() == before + 2  # damaged NOT restored
 
-    report = (
-        login_as(owner)
-        .get(f"{API}/reports/profit/?period=custom&start=2026-08-01&end=2026-08-31")
-        .json()
-    )
+    # all activity above happened just now -> the current month covers it,
+    # whatever today's date is
+    report = login_as(owner).get(f"{API}/reports/profit/?period=month").json()
     assert report["returns_total"] == "3000.00"
     # COGS reversed only for the resellable unit(s): 2 * 600
     assert report["cost_reversed"] == "1200.00"
@@ -483,7 +481,7 @@ def test_journey_expenses_and_reports(login_as, branch, owner, employee, stocked
             {
                 "category": ec["id"],
                 "amount": "1500.00",
-                "expense_date": "2026-08-15",
+                "expense_date": timezone.localdate().isoformat(),
                 "description": "Diesel for generator",
             },
             format="json",
@@ -491,7 +489,8 @@ def test_journey_expenses_and_reports(login_as, branch, owner, employee, stocked
         == 201
     )
 
-    rng = "period=custom&start=2026-08-01&end=2026-08-31"
+    # the sale and the expense both landed today -> query the current month
+    rng = "period=month"
     profit = oc.get(f"{API}/reports/profit/?{rng}").json()
     assert profit["revenue"] == "10000.00"
     assert profit["cogs"] == "6000.00"

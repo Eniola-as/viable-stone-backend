@@ -6351,7 +6351,7 @@ components:
             detail_code accompanies the outcome; it is "" for ACCEPTED / DUPLICATE.
             REJECTED (invalid payload — the device already took real money, so the owner must reconcile it manually): duplicate_sequence, outside_window, invalid_timestamp, empty_cart, price_not_in_snapshot, invalid_quantity, payment_required, invalid_payment_method, invalid_payment_amount, reference_required, invalid_tendered_amount, payment_mismatch, variant_not_found, variant_unavailable.
             CONFLICT (a real sale that cannot be applied now — retained for the owner): stock_not_available, sale_in_progress.
-            OWNER_REVIEW_REQUIRED (the session was revoked / replaced / force-closed before this sale synced): revoked, replaced, force_closed.
+            OWNER_REVIEW_REQUIRED (the offline session was over — ended, force-ended, revoked, replaced, or its window had lapsed — when this sale synced): closed, force_closed, revoked, replaced, expired.
         sale_id:
           type: string
           format: uuid
@@ -6524,7 +6524,7 @@ components:
             detail_code accompanies the outcome; it is "" for ACCEPTED / DUPLICATE.
             REJECTED (invalid payload — the device already took real money, so the owner must reconcile it manually): duplicate_sequence, outside_window, invalid_timestamp, empty_cart, price_not_in_snapshot, invalid_quantity, payment_required, invalid_payment_method, invalid_payment_amount, reference_required, invalid_tendered_amount, payment_mismatch, variant_not_found, variant_unavailable.
             CONFLICT (a real sale that cannot be applied now — retained for the owner): stock_not_available, sale_in_progress.
-            OWNER_REVIEW_REQUIRED (the session was revoked / replaced / force-closed before this sale synced): revoked, replaced, force_closed.
+            OWNER_REVIEW_REQUIRED (the offline session was over — ended, force-ended, revoked, replaced, or its window had lapsed — when this sale synced): closed, force_closed, revoked, replaced, expired.
         sale_id:
           type: string
           nullable: true

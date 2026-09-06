@@ -30,8 +30,9 @@ OFFLINE_SYNC_DETAIL_CODES_DOC = (
     "variant_not_found, variant_unavailable.\n"
     "CONFLICT (a real sale that cannot be applied now — retained for the "
     "owner): stock_not_available, sale_in_progress.\n"
-    "OWNER_REVIEW_REQUIRED (the session was revoked / replaced / force-closed "
-    "before this sale synced): revoked, replaced, force_closed."
+    "OWNER_REVIEW_REQUIRED (the offline session was over — ended, force-ended, "
+    "revoked, replaced, or its window had lapsed — when this sale synced): "
+    "closed, force_closed, revoked, replaced, expired."
 )
 
 
