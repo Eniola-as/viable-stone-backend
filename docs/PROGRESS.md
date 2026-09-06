@@ -1229,3 +1229,31 @@ report 112, 0 skipped:
     froze the sales to Aug 10 but not the `period=month` query → the whole test
     body (sales + query) is now inside one `freeze_time` block. Full suite back
     to green.
+
+- 2026-09-06: **G25 — pre-confirm audit-impact on the reconcile dialog**
+  (frontend "show the impact before confirmation" applied to reconcile; logged
+  by `viable-stone-frontend-e3` in `docs/backend-contract-gaps.md`).
+  * **G25.1 — pre-confirm totals on the single-record read: DONE.**
+    `GET /api/v1/offline/sync-records/{id}/` (owner + MFA, retrieve only) now
+    also returns `verified_snapshot_total` (catalogue price×qty from the
+    verified snapshot) and `retained_payments_total` (sum of retained device
+    payments) — the same figures the reconciliation result already carries,
+    now visible **before** the owner attests a `REFUNDED_AND_RETURNED`. New
+    `OfflineSyncRecordDetailSerializer` (subclass; retrieve-only via
+    `get_serializer_class`) so the two fields are **not** on the list response
+    (each is an HMAC token-verify / payload parse) nor the cashier
+    `OfflineSaleLookup`. Either is `null` when it can't be established
+    (unverifiable token → `verified_snapshot_total` null; unparseable payments
+    → `retained_payments_total` null). Additive read fields, no behaviour
+    change; **no path / method / operationId change** — the retrieve op's 200
+    now references a superset component `OfflineSyncRecordDetail`;
+    `openapi_contract_snapshot.json` unchanged, `openapi.yml` regenerated
+    (`--fail-on-warn` clean, byte-stable). Tests:
+    `test_offline_reconciliation.py::TestPreConfirmDiagnostics` (5).
+  * **G25.2 — LINKED_EXISTING_SALE dry-run / link-preview: DECLINED (deferred).**
+    The authoritative three-dimension check runs at submit and already blocks a
+    wrong link; the frontend's target-sale preview card catches wrong-id. A
+    `?dry_run=true` / `GET .../link-preview/` returning `link_verification`
+    pre-commit is a nice-to-have with an accepted fallback — not worth the
+    compare/persist split + extra surface right now. Revisit if it proves
+    painful in use.

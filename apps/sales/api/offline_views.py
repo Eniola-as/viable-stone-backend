@@ -40,6 +40,7 @@ from apps.sales.api.offline_serializers import (
     OfflineReconciliationResultSerializer,
     OfflineSaleLookupSerializer,
     OfflineSessionEndSerializer,
+    OfflineSyncRecordDetailSerializer,
     OfflineSyncRecordResolveSerializer,
     OfflineSyncRecordSerializer,
     OfflineSyncRequestSerializer,
@@ -434,7 +435,19 @@ class OfflineTemporaryReceiptView(_TokenBoundView):
 
 @extend_schema_view(
     list=extend_schema(summary="List offline sync records (owner)", tags=["Offline"]),
-    retrieve=extend_schema(summary="Retrieve an offline sync record", tags=["Offline"]),
+    retrieve=extend_schema(
+        summary="Retrieve an offline sync record (owner)",
+        description=(
+            "Single record. Adds the owner-only pre-confirm diagnostics "
+            "`verified_snapshot_total` (catalogue price-times-quantity total "
+            "from the verified snapshot) and `retained_payments_total` (sum of "
+            "the retained device payments) so the owner can see catalogue-vs-"
+            "collected divergence **before** attesting a `REFUNDED_AND_RETURNED`."
+            " Either is `null` when it cannot be established. Neither is on the "
+            "list response or the cashier `OfflineSaleLookup`."
+        ),
+        tags=["Offline"],
+    ),
 )
 class OfflineSyncRecordViewSet(
     mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
@@ -453,7 +466,12 @@ class OfflineSyncRecordViewSet(
     def get_queryset(self):
         return OfflineSaleSyncRecord.objects.filter(
             branch_id=self.request.user.branch_id
-        ).select_related("sale")
+        ).select_related("sale", "authorization")
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return OfflineSyncRecordDetailSerializer
+        return OfflineSyncRecordSerializer
 
     @extend_schema(
         request=OfflineSyncRecordResolveSerializer,

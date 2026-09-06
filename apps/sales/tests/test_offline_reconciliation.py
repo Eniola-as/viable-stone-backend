@@ -1863,3 +1863,47 @@ class TestRefundReferenceDisclosure:
         assert look.status_code == 200
         assert "refunds" not in look.json()
         assert secret_ref not in look.content.decode()
+
+
+# --------------------------------------------------------------------------- #
+# G25 — pre-confirm diagnostics on the single-record read                        #
+# --------------------------------------------------------------------------- #
+
+
+class TestPreConfirmDiagnostics:
+    def test_detail_view_shows_catalogue_vs_collected(self, login_as, branch, owner):
+        # device recorded 1999 against a 2000 catalogue total
+        _v, _c, _a, rec = _rejected_record(login_as, branch, owner)
+        body = login_as(owner).get(f"{BASE}/sync-records/{rec.id}/").json()
+        assert body["verified_snapshot_total"] == "2000.00"
+        assert body["retained_payments_total"] == "1999.00"
+
+    def test_matched_record_shows_equal_totals(self, login_as, branch, owner):
+        _v, _c, _a, rec = _owner_review_record(login_as, branch, owner)  # 2 x 1000
+        body = login_as(owner).get(f"{BASE}/sync-records/{rec.id}/").json()
+        assert body["verified_snapshot_total"] == "2000.00"
+        assert body["retained_payments_total"] == "2000.00"
+
+    def test_unverifiable_token_nulls_only_the_snapshot_total(
+        self, login_as, branch, owner
+    ):
+        _v, rec = _tampered_owner_review(login_as, branch, owner)
+        body = login_as(owner).get(f"{BASE}/sync-records/{rec.id}/").json()
+        assert body["verified_snapshot_total"] is None
+        assert body["retained_payments_total"] == "2000.00"
+
+    def test_list_response_omits_the_pre_confirm_diagnostics(
+        self, login_as, branch, owner
+    ):
+        _v, _c, _a, rec = _rejected_record(login_as, branch, owner)
+        rows = login_as(owner).get(f"{BASE}/sync-records/").json()["results"]
+        row = next(r for r in rows if r["id"] == str(rec.id))
+        assert "verified_snapshot_total" not in row
+        assert "retained_payments_total" not in row
+        assert "retained_payments" in row  # the lighter projection stays on list
+
+    def test_cashier_lookup_never_exposes_them(self, login_as, branch, owner):
+        _v, cashier, _a, rec = _rejected_record(login_as, branch, owner)
+        look = login_as(cashier).get(f"{BASE}/sales/{rec.client_sale_id}/").json()
+        assert "verified_snapshot_total" not in look
+        assert "retained_payments_total" not in look

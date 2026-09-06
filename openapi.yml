@@ -2530,7 +2530,13 @@ paths:
   /api/v1/offline/sync-records/{id}/:
     get:
       operationId: offline_sync_records_retrieve
-      summary: Retrieve an offline sync record
+      description: Single record. Adds the owner-only pre-confirm diagnostics `verified_snapshot_total`
+        (catalogue price-times-quantity total from the verified snapshot) and `retained_payments_total`
+        (sum of the retained device payments) so the owner can see catalogue-vs-collected
+        divergence **before** attesting a `REFUNDED_AND_RETURNED`. Either is `null`
+        when it cannot be established. Neither is on the list response or the cashier
+        `OfflineSaleLookup`.
+      summary: Retrieve an offline sync record (owner)
       parameters:
       - in: path
         name: id
@@ -2548,7 +2554,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OfflineSyncRecord'
+                $ref: '#/components/schemas/OfflineSyncRecordDetail'
           description: ''
         default:
           $ref: '#/components/responses/Error'
@@ -6472,6 +6478,97 @@ components:
       - resolved_at
       - retained_payments
       - sale
+    OfflineSyncRecordDetail:
+      type: object
+      description: |-
+        Single-record read (owner + MFA). Adds the two pre-confirm diagnostics
+        so the owner can see catalogue-vs-collected divergence **before** attesting
+        a ``REFUNDED_AND_RETURNED`` — the same figures the reconciliation result
+        carries afterwards.
+
+        Kept off the list response: each is an HMAC verify of the retained signed
+        token / a payload parse, wasteful per row. ``verified_snapshot_total`` is
+        ``null`` when the token cannot be verified or an item is not in the signed
+        snapshot; ``retained_payments_total`` is ``null`` when the retained payments
+        are absent or unparseable.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        client_sale_id:
+          type: string
+          format: uuid
+          readOnly: true
+        device_sequence:
+          type: integer
+          readOnly: true
+        offline_created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        outcome:
+          allOf:
+          - $ref: '#/components/schemas/OutcomeEnum'
+          readOnly: true
+        detail_code:
+          type: string
+          readOnly: true
+        redacted_payload:
+          readOnly: true
+        retained_payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/_RetainedPayment'
+          readOnly: true
+        sale:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        official_receipt_number:
+          type: string
+          readOnly: true
+        resolved:
+          type: boolean
+          readOnly: true
+        resolved_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        resolution_note:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        verified_snapshot_total:
+          type: string
+          nullable: true
+          readOnly: true
+        retained_payments_total:
+          type: string
+          nullable: true
+          readOnly: true
+      required:
+      - client_sale_id
+      - created_at
+      - detail_code
+      - device_sequence
+      - id
+      - official_receipt_number
+      - offline_created_at
+      - outcome
+      - redacted_payload
+      - resolution_note
+      - resolved
+      - resolved_at
+      - retained_payments
+      - retained_payments_total
+      - sale
+      - verified_snapshot_total
     OfflineSyncRecordResolveRequest:
       type: object
       properties:

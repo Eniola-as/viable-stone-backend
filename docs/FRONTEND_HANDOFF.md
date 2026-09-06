@@ -667,11 +667,22 @@ from a snapshot-verified total, so `reconciliation.amount_source` is always
   same index twice → `payment_reference_duplicated`; a reference against a CASH
   line → `payment_reference_unexpected`. CASH-only records need none.
 
-**`retained_payments` (read model on `GET .../sync-records/{id}/`, owner-only)** —
-`[{ "payment_index", "method", "amount", "reference_required" }]`. It gives the
-owner exactly what they need to key the correct slip number against each line
-(index, method, amount) and **never** carries a reference — the device's
-original Transfer/POS reference was discarded at sync time.
+**Owner-only read fields on `GET /api/v1/offline/sync-records/{id}/`** (the
+single-record retrieve — **not** the list, **not** the cashier
+`OfflineSaleLookup`):
+
+* `retained_payments` — `[{ "payment_index", "method", "amount",
+  "reference_required" }]`. Everything the owner needs to key the correct slip
+  number against each line (index, method, amount); **never** a reference (the
+  device's original Transfer/POS reference was discarded at sync time). Also
+  present on the list response.
+* `verified_snapshot_total` / `retained_payments_total` — the catalogue
+  price×qty total (from the verified signed snapshot) and the sum of the
+  retained device payments, so the owner sees "catalogue ₦X vs collected ₦Y"
+  **before** attesting a `REFUNDED_AND_RETURNED` — the same figures the
+  reconciliation result carries afterwards. Either is `null` when it cannot be
+  established (unverifiable token → `verified_snapshot_total` null; unparseable
+  retained payments → `retained_payments_total` null). Retrieve-only.
 
 ### `REFUNDED_AND_RETURNED` — the customer returned everything, refunded in full
 

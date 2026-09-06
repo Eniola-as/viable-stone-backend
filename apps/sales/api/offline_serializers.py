@@ -313,6 +313,45 @@ class OfflineSyncRecordSerializer(ControlCharSafeModelSerializer):
         ]
 
 
+class OfflineSyncRecordDetailSerializer(OfflineSyncRecordSerializer):
+    """Single-record read (owner + MFA). Adds the two pre-confirm diagnostics
+    so the owner can see catalogue-vs-collected divergence **before** attesting
+    a ``REFUNDED_AND_RETURNED`` — the same figures the reconciliation result
+    carries afterwards.
+
+    Kept off the list response: each is an HMAC verify of the retained signed
+    token / a payload parse, wasteful per row. ``verified_snapshot_total`` is
+    ``null`` when the token cannot be verified or an item is not in the signed
+    snapshot; ``retained_payments_total`` is ``null`` when the retained payments
+    are absent or unparseable.
+    """
+
+    verified_snapshot_total = serializers.SerializerMethodField()
+    retained_payments_total = serializers.SerializerMethodField()
+
+    class Meta(OfflineSyncRecordSerializer.Meta):
+        fields = [
+            *OfflineSyncRecordSerializer.Meta.fields,
+            "verified_snapshot_total",
+            "retained_payments_total",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_verified_snapshot_total(self, obj):
+        from apps.sales.services.offline_reconciliation import _verified_offline_total
+
+        value = _verified_offline_total(obj)
+        return None if value is None else str(value)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_retained_payments_total(self, obj):
+        from apps.sales.services.offline_reconciliation import _retained_payments_total
+
+        value = _retained_payments_total(obj)
+        return None if value is None else str(value)
+
+
 class OfflineSyncRecordResolveSerializer(ControlCharSafeSerializer):
     note = serializers.CharField(min_length=5, max_length=500)
 
