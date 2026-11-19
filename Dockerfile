@@ -9,7 +9,7 @@
 # --------------------------------------------------------------------------- #
 # Builder — install locked runtime dependencies into an isolated virtualenv    #
 # --------------------------------------------------------------------------- #
-FROM python:3.13.15-slim-bookworm@sha256:c45a22ea000adfd9cda29364bbe7edd23001ce5cc2ad15857cfbf7766943b9ca AS builder
+FROM python:3.15.2-slim-bookworm@sha256:96599df822d0e1c6bb700014a05c7f3c8cabc6e0f7ff3c4f9f69cee033b4b5d9 AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -25,7 +25,7 @@ RUN pip install --require-virtualenv -r requirements.lock
 # --------------------------------------------------------------------------- #
 # Runtime — slim, non-root, runtime dependencies only                         #
 # --------------------------------------------------------------------------- #
-FROM python:3.13.15-slim-bookworm@sha256:c45a22ea000adfd9cda29364bbe7edd23001ce5cc2ad15857cfbf7766943b9ca AS runtime
+FROM python:3.15.2-slim-bookworm@sha256:96599df822d0e1c6bb700014a05c7f3c8cabc6e0f7ff3c4f9f69cee033b4b5d9 AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
